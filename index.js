@@ -1,0 +1,555 @@
+// SillyTavern Server Plugin - Termux File Manager
+// This plugin adds file management API endpoints to SillyTavern's Express server.
+
+const path = require('path');
+const fs = require('fs');
+const express = require('express');
+const multer = require('multer');
+
+const MODULE_NAME = 'termux-file-manager';
+
+// Safety: restrict navigation to allowed directories
+function getSafeRoot() {
+    return process.env.HOME || '/data/data/com.termux/files/home';
+}
+
+// Allowed root paths
+const ALLOWED_ROOTS = [
+    process.env.HOME || '/data/data/com.termux/files/home',
+    '/storage',
+];
+
+function resolveSafe(requestedPath) {
+    const home = getSafeRoot();
+
+    // Handle special prefixes
+    let resolved;
+    if (requestedPath && (requestedPath.startsWith('/storage') || requestedPath.startsWith('//storage'))) {
+        resolved = path.resolve(requestedPath.replace(/^\/\//, '/'));
+    } else {
+        resolved = path.resolve(home, requestedPath || '');
+    }
+
+    // Check if path is within any allowed root
+    const isAllowed = ALLOWED_ROOTS.some(root => resolved.startsWith(root));
+    if (!isAllowed) {
+        throw new Error('Access denied: path is outside allowed directories');
+    }
+    return resolved;
+}
+
+// Multer storage – saves uploads to a temp dir with unique names
+const storage = multer.diskStorage({
+    destination: function (_req, _file, cb) {
+        const tmpDir = path.join(getSafeRoot(), '.st-filemanager-tmp');
+        fs.mkdirSync(tmpDir, { recursive: true });
+        cb(null, tmpDir);
+    },
+    filename: function (_req, file, cb) {
+        // Use unique ID to avoid filename collisions and special char issues
+        const uniqueId = Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
+        cb(null, uniqueId);
+    }
+});
+const upload = multer({ storage, limits: { fileSize: 500 * 1024 * 1024 } }); // 500MB max
+
+/**
+ * @param {express.Express} app - SillyTavern Express app
+ */
+function init(app) {
+    console.log(`[${MODULE_NAME}] Initializing Termux File Manager plugin...`);
+
+    const router = express.Router();
+
+    // ===== LIST directory =====
+    router.post('/list', express.json(), (req, res) => {
+        try {
+            const dirPath = resolveSafe(req.body.path || '');
+            const items = fs.readdirSync(dirPath, { withFileTypes: true });
+            const result = items.map(item => {
+                const fullPath = path.join(dirPath, item.name);
+                let size = 0;
+                let mtime = null;
+                let childCount = null;
+                const isDir = item.isDirectory();
+                try {
+                    const stat = fs.statSync(fullPath);
+                    size = stat.size;
+                    mtime = stat.mtime.toISOString();
+                    if (isDir) {
+                        try {
+                            childCount = fs.readdirSync(fullPath).length;
+                        } catch (e) { /* permission denied etc */ }
+                    }
+                } catch (e) { /* skip */ }
+                return {
+                    name: item.name,
+                    isDirectory: isDir,
+                    size,
+                    mtime,
+                    childCount,
+                };
+            });
+            // Sort: directories first, then alphabetical
+            result.sort((a, b) => {
+                if (a.isDirectory && !b.isDirectory) return -1;
+                if (!a.isDirectory && b.isDirectory) return 1;
+                return a.name.localeCompare(b.name);
+            });
+            const root = getSafeRoot();
+            // For /storage paths, show absolute path; for home, show relative
+            let displayPath;
+            if (dirPath.startsWith('/storage')) {
+                displayPath = dirPath;
+            } else {
+                displayPath = path.relative(root, dirPath) || '~';
+            }
+            res.json({
+                currentPath: displayPath,
+                absolutePath: dirPath,
+                items: result,
+            });
+        } catch (err) {
+            res.status(400).json({ error: err.message });
+        }
+    });
+
+    // ===== DOWNLOAD file =====
+    router.post('/download', express.json(), (req, res) => {
+        try {
+            const filePath = resolveSafe(req.body.path);
+            if (!fs.existsSync(filePath) || fs.statSync(filePath).isDirectory()) {
+                return res.status(400).json({ error: 'Not a valid file' });
+            }
+            res.download(filePath);
+        } catch (err) {
+            res.status(400).json({ error: err.message });
+        }
+    });
+
+    // ===== UPLOAD file(s) with folder structure support =====
+    // Multer error handler wrapper
+    function uploadMiddleware(req, res, next) {
+        upload.array('files', 500)(req, res, function (err) {
+            if (err) {
+                console.error(`[${MODULE_NAME}] Multer error:`, err.message);
+                return res.status(400).json({ error: 'Upload failed: ' + err.message });
+            }
+            next();
+        });
+    }
+
+    router.post('/upload', uploadMiddleware, (req, res) => {
+        try {
+            const targetDir = resolveSafe(req.body.targetPath || '');
+            fs.mkdirSync(targetDir, { recursive: true });
+
+            // Parse relative paths if provided (for folder uploads)
+            let relativePaths = [];
+            try {
+                if (req.body.relativePaths) {
+                    relativePaths = JSON.parse(req.body.relativePaths);
+                }
+            } catch (e) { /* ignore parse errors */ }
+
+            const results = [];
+            const errors = [];
+            for (let i = 0; i < req.files.length; i++) {
+                const file = req.files[i];
+                // Decode originalname (multer sometimes gives latin1-encoded UTF-8)
+                let origName = file.originalname;
+                try {
+                    origName = Buffer.from(file.originalname, 'latin1').toString('utf-8');
+                } catch (e) { /* keep original */ }
+
+                const relPath = relativePaths[i] || origName;
+
+                try {
+                    // Sanitize path: remove null bytes, normalize
+                    const safePath = relPath.replace(/\0/g, '').normalize('NFC');
+
+                    // Ensure relative path doesn't escape target
+                    const destFull = path.join(targetDir, safePath);
+                    const destResolved = path.resolve(destFull);
+                    if (!destResolved.startsWith(targetDir)) {
+                        errors.push({ name: relPath, error: 'Path escape blocked' });
+                        continue;
+                    }
+
+                    // Create subdirectories if needed
+                    const destDir = path.dirname(destResolved);
+                    fs.mkdirSync(destDir, { recursive: true });
+
+                    // Copy instead of rename (safer across filesystems / special chars)
+                    fs.copyFileSync(file.path, destResolved);
+                    // Clean up temp file
+                    try { fs.unlinkSync(file.path); } catch (e) {}
+
+                    results.push({ name: safePath, size: file.size, dest: destResolved });
+                } catch (fileErr) {
+                    console.error(`[${MODULE_NAME}] Upload error for "${relPath}":`, fileErr.message);
+                    errors.push({ name: relPath, error: fileErr.message });
+                    // Clean up temp file on error too
+                    try { fs.unlinkSync(file.path); } catch (e) {}
+                }
+            }
+            res.json({ success: true, uploaded: results, errors });
+        } catch (err) {
+            console.error(`[${MODULE_NAME}] Upload handler error:`, err.message);
+            res.status(400).json({ error: err.message });
+        }
+    });
+
+    // ===== DELETE file/folder =====
+    router.post('/delete', express.json(), (req, res) => {
+        try {
+            const targetPath = resolveSafe(req.body.path);
+            if (!fs.existsSync(targetPath)) {
+                return res.status(404).json({ error: 'Path not found' });
+            }
+            const stat = fs.statSync(targetPath);
+            if (stat.isDirectory()) {
+                fs.rmSync(targetPath, { recursive: true, force: true });
+            } else {
+                fs.unlinkSync(targetPath);
+            }
+            res.json({ success: true });
+        } catch (err) {
+            res.status(400).json({ error: err.message });
+        }
+    });
+
+    // ===== CREATE folder =====
+    router.post('/mkdir', express.json(), (req, res) => {
+        try {
+            const dirPath = resolveSafe(req.body.path);
+            fs.mkdirSync(dirPath, { recursive: true });
+            res.json({ success: true });
+        } catch (err) {
+            res.status(400).json({ error: err.message });
+        }
+    });
+
+    // ===== MOVE / RENAME =====
+    router.post('/move', express.json(), (req, res) => {
+        try {
+            const src = resolveSafe(req.body.from);
+            const dest = resolveSafe(req.body.to);
+            fs.renameSync(src, dest);
+            res.json({ success: true });
+        } catch (err) {
+            res.status(400).json({ error: err.message });
+        }
+    });
+
+    // ===== COPY file/folder =====
+    router.post('/copy', express.json(), (req, res) => {
+        try {
+            const src = resolveSafe(req.body.from);
+            const dest = resolveSafe(req.body.to);
+
+            if (!fs.existsSync(src)) {
+                return res.status(404).json({ error: '원본을 찾을 수 없습니다.' });
+            }
+
+            const stat = fs.statSync(src);
+            if (stat.isDirectory()) {
+                // Recursive directory copy
+                const { execSync } = require('child_process');
+                execSync(`cp -r "${src}" "${dest}"`);
+            } else {
+                // Ensure dest directory exists
+                fs.mkdirSync(path.dirname(dest), { recursive: true });
+                fs.copyFileSync(src, dest);
+            }
+            res.json({ success: true });
+        } catch (err) {
+            res.status(400).json({ error: err.message });
+        }
+    });
+
+    // ===== READ text file =====
+    router.post('/read', express.json(), (req, res) => {
+        try {
+            const filePath = resolveSafe(req.body.path);
+            const stat = fs.statSync(filePath);
+            if (stat.isDirectory()) {
+                return res.status(400).json({ error: 'Cannot read a directory' });
+            }
+            if (stat.size > 2 * 1024 * 1024) {
+                return res.status(400).json({ error: 'File too large to preview (>2MB)' });
+            }
+            const content = fs.readFileSync(filePath, 'utf-8');
+            res.json({ content, size: stat.size });
+        } catch (err) {
+            res.status(400).json({ error: err.message });
+        }
+    });
+
+    // ===== Find SillyTavern root =====
+    function findSTRoot() {
+        const home = getSafeRoot();
+        // Check common locations
+        const candidates = [
+            path.join(home, 'SillyTavern'),
+            path.join(home, 'sillytavern'),
+            path.join(home, 'ST'),
+            path.resolve(__dirname, '..', '..'), // if installed as plugin
+        ];
+        for (const dir of candidates) {
+            if (fs.existsSync(path.join(dir, 'data')) || fs.existsSync(path.join(dir, 'config.yaml'))) {
+                return dir;
+            }
+        }
+        return null;
+    }
+
+    // ===== BACKUP SillyTavern data =====
+    router.post('/backup', express.json(), async (req, res) => {
+        try {
+            const { execSync } = require('child_process');
+            const stRoot = findSTRoot();
+            if (!stRoot) {
+                return res.status(400).json({ error: 'SillyTavern 폴더를 찾을 수 없습니다. ~/SillyTavern 경로를 확인하세요.' });
+            }
+
+            const backupName = `st-backup-${new Date().toISOString().replace(/[:.]/g, '-')}.tar.gz`;
+            const backupPath = path.join(getSafeRoot(), backupName);
+
+            const targets = [];
+            if (fs.existsSync(path.join(stRoot, 'data'))) targets.push('data');
+            if (fs.existsSync(path.join(stRoot, 'config.yaml'))) targets.push('config.yaml');
+
+            if (targets.length === 0) {
+                return res.status(400).json({ error: 'SillyTavern에 data/config가 없습니다.' });
+            }
+
+            execSync(`tar -czf "${backupPath}" ${targets.join(' ')}`, { cwd: stRoot });
+            res.json({ success: true, backupPath, backupName, stRoot });
+        } catch (err) {
+            res.status(500).json({ error: err.message });
+        }
+    });
+
+    // ===== RESTORE from backup =====
+    router.post('/restore', express.json(), (req, res) => {
+        try {
+            const { execSync } = require('child_process');
+            const backupFile = resolveSafe(req.body.path);
+            const stRoot = findSTRoot();
+            if (!stRoot) {
+                return res.status(400).json({ error: 'SillyTavern 폴더를 찾을 수 없습니다.' });
+            }
+
+            if (!fs.existsSync(backupFile)) {
+                return res.status(404).json({ error: '백업 파일을 찾을 수 없습니다.' });
+            }
+
+            execSync(`tar -xzf "${backupFile}" --overwrite`, { cwd: stRoot });
+            res.json({ success: true, message: '복원 완료! SillyTavern을 재시작하세요.' });
+        } catch (err) {
+            res.status(500).json({ error: err.message });
+        }
+    });
+
+    // ===== UPDATE (git pull) =====
+    router.post('/update', express.json(), (req, res) => {
+        try {
+            const { execSync } = require('child_process');
+            const target = req.body.target; // 'fm' or 'st'
+            let cwd;
+            let log = '';
+
+            if (target === 'fm') {
+                // Update file manager itself
+                cwd = path.resolve(__dirname);
+                log += '📂 파일매니저 업데이트 중...\n';
+                log += '$ git pull\n';
+                try {
+                    log += execSync('git pull', { cwd, encoding: 'utf-8', timeout: 30000 });
+                } catch (e) {
+                    log += e.stdout || '';
+                    log += e.stderr || '';
+                }
+                log += '\n$ npm install\n';
+                try {
+                    log += execSync('npm install --production 2>&1', { cwd, encoding: 'utf-8', timeout: 60000 });
+                } catch (e) {
+                    log += e.stdout || '';
+                    log += e.stderr || '';
+                }
+                // Schedule restart
+                res.json({ success: true, log });
+                setTimeout(() => process.exit(0), 1500); // pm2 or user restarts
+                return;
+            } else if (target === 'st') {
+                // Update SillyTavern
+                const stRoot = findSTRoot();
+                if (!stRoot) {
+                    return res.status(400).json({ error: 'SillyTavern 폴더를 찾을 수 없습니다.' });
+                }
+                cwd = stRoot;
+                log += '🎭 SillyTavern 업데이트 중...\n';
+                log += '$ git pull\n';
+                try {
+                    log += execSync('git pull', { cwd, encoding: 'utf-8', timeout: 30000 });
+                } catch (e) {
+                    log += e.stdout || '';
+                    log += e.stderr || '';
+                }
+                log += '\n$ npm install\n';
+                try {
+                    log += execSync('npm install --production 2>&1', { cwd, encoding: 'utf-8', timeout: 120000 });
+                } catch (e) {
+                    log += e.stdout || '';
+                    log += e.stderr || '';
+                }
+                res.json({ success: true, log });
+                return;
+            } else if (target === 'st-start') {
+                // Start SillyTavern via start.sh or node server.js
+                const stRoot = findSTRoot();
+                if (!stRoot) {
+                    return res.status(400).json({ error: 'SillyTavern 폴더를 찾을 수 없습니다.' });
+                }
+                cwd = stRoot;
+                log += '🚀 SillyTavern 시작 중...\n';
+
+                // Check if already running
+                try {
+                    const check = execSync('pgrep -f "node.*server.js" || true', { encoding: 'utf-8' }).trim();
+                    if (check) {
+                        log += '⚠️ SillyTavern이 이미 실행 중인 것 같습니다 (PID: ' + check + ')\n';
+                    }
+                } catch (e) {}
+
+                // Try start.sh first, fallback to node server.js
+                const startScript = fs.existsSync(path.join(stRoot, 'start.sh')) ? 'bash start.sh' : 'node server.js';
+                log += `$ nohup ${startScript} &\n`;
+                try {
+                    const { spawn } = require('child_process');
+                    const parts = startScript.split(' ');
+                    const child = spawn(parts[0], parts.slice(1), {
+                        cwd: stRoot,
+                        detached: true,
+                        stdio: ['ignore', 'ignore', 'ignore'],
+                    });
+                    child.unref();
+                    log += '✅ SillyTavern 시작됨! (백그라운드)\n';
+                    log += '접속: http://localhost:8000\n';
+                } catch (e) {
+                    log += '❌ 시작 실패: ' + (e.message || '') + '\n';
+                }
+                res.json({ success: true, log });
+                return;
+            } else if (target === 'st-stop') {
+                // Stop SillyTavern
+                log += '⏹ SillyTavern 종료 중...\n';
+                try {
+                    log += execSync('pkill -f "node.*server.js" 2>&1 || echo "프로세스를 찾을 수 없습니다"', { encoding: 'utf-8', timeout: 5000 });
+                    log += '✅ SillyTavern 종료됨\n';
+                } catch (e) {
+                    log += e.stdout || '';
+                    log += e.stderr || '';
+                    log += '종료 시도 완료\n';
+                }
+                res.json({ success: true, log });
+                return;
+            } else if (target === 'library') {
+                // Update chat-library
+                const home = getSafeRoot();
+                const libCandidates = ['chat-library', 'Chat-Library', 'perpage'];
+                let libRoot = null;
+                for (const name of libCandidates) {
+                    const p = path.join(home, name);
+                    if (fs.existsSync(p)) { libRoot = p; break; }
+                }
+                if (!libRoot) {
+                    return res.status(400).json({ error: '도서관 폴더를 찾을 수 없습니다. ~/chat-library 또는 ~/perpage 경로를 확인하세요.' });
+                }
+                log += '📚 도서관 업데이트 중...\n';
+                log += '$ git pull\n';
+                try {
+                    log += execSync('git pull', { cwd: libRoot, encoding: 'utf-8', timeout: 30000 });
+                } catch (e) { log += (e.stdout || '') + (e.stderr || ''); }
+                log += '\n$ npm install\n';
+                try {
+                    log += execSync('npm install --production 2>&1', { cwd: libRoot, encoding: 'utf-8', timeout: 60000 });
+                } catch (e) { log += (e.stdout || '') + (e.stderr || ''); }
+                res.json({ success: true, log });
+                return;
+            } else if (target === 'library-start') {
+                // Start chat-library
+                const home = getSafeRoot();
+                const libCandidates = ['chat-library', 'Chat-Library', 'perpage'];
+                let libRoot = null;
+                for (const name of libCandidates) {
+                    const p = path.join(home, name);
+                    if (fs.existsSync(p)) { libRoot = p; break; }
+                }
+                if (!libRoot) {
+                    return res.status(400).json({ error: '도서관 폴더를 찾을 수 없습니다.' });
+                }
+                log += '🚀 도서관 시작 중...\n';
+                try {
+                    const { spawn } = require('child_process');
+                    // Try npm start, then node server.js
+                    let startCmd = 'npm';
+                    let startArgs = ['start'];
+                    if (fs.existsSync(path.join(libRoot, 'server.js'))) {
+                        startCmd = 'node';
+                        startArgs = ['server.js'];
+                    } else if (fs.existsSync(path.join(libRoot, 'index.js'))) {
+                        startCmd = 'node';
+                        startArgs = ['index.js'];
+                    }
+                    const child = spawn(startCmd, startArgs, {
+                        cwd: libRoot, detached: true,
+                        stdio: ['ignore', 'ignore', 'ignore'],
+                    });
+                    child.unref();
+                    log += `✅ 도서관 시작됨! (${startCmd} ${startArgs.join(' ')})\n`;
+                } catch (e) {
+                    log += '❌ 시작 실패: ' + (e.message || '') + '\n';
+                }
+                res.json({ success: true, log });
+                return;
+            } else if (target === 'library-stop') {
+                log += '⏹ 도서관 종료 중...\n';
+                try {
+                    // Kill node processes running from chat-library folder
+                    log += execSync('pkill -f "node.*chat-library" 2>&1 || echo "프로세스를 찾을 수 없습니다"', { encoding: 'utf-8', timeout: 5000 });
+                    log += '✅ 도서관 종료됨\n';
+                } catch (e) {
+                    log += (e.stdout || '') + (e.stderr || '');
+                    log += '종료 시도 완료\n';
+                }
+                res.json({ success: true, log });
+                return;
+            }
+
+            res.status(400).json({ error: 'Invalid target' });
+        } catch (err) {
+            res.status(500).json({ error: err.message });
+        }
+    });
+
+    // ===== RESTART =====
+    router.post('/restart', express.json(), (_req, res) => {
+        res.json({ success: true, message: 'Restarting...' });
+        setTimeout(() => process.exit(0), 500);
+    });
+
+    // Mount router
+    app.use('/api/plugins/termux-file-manager', router);
+    console.log(`[${MODULE_NAME}] File Manager API ready at /api/plugins/termux-file-manager`);
+}
+
+module.exports = {
+    init,
+    info: {
+        id: MODULE_NAME,
+        name: 'Termux File Manager',
+        description: 'Web-based file manager for Termux SillyTavern',
+    },
+};
