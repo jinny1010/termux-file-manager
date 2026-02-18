@@ -1,11 +1,11 @@
 {
-    "name": "termux-file-manager",
-    "version": "1.0.0",
-    "description": "Web-based file manager for SillyTavern on Termux - upload, download, browse, backup & restore",
-    "main": "index.js",
-    "author": "Claude",
-    "license": "MIT",
-    "dependencies": {
-        "multer": "^1.4.5-lts.1"
-    }
+  "name": "chat-library",
+  "version": "1.0.0",
+  "description": "SillyTavern 채팅 백업 도서관 뷰어",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "author": "",
+  "license": "MIT"
 }
