@@ -417,25 +417,23 @@ function init(app) {
 
                 // Check if already running
                 try {
-                    const check = execSync('pgrep -f "node.*server.js" || true', { encoding: 'utf-8' }).trim();
+                    const check = execSync('pgrep -f "node.*server.js" 2>/dev/null || true', { encoding: 'utf-8', shell: true }).trim();
                     if (check) {
                         log += '⚠️ SillyTavern이 이미 실행 중인 것 같습니다 (PID: ' + check + ')\n';
                     }
                 } catch (e) {}
 
-                // Try start.sh first, fallback to node server.js
                 const startScript = fs.existsSync(path.join(stRoot, 'start.sh')) ? 'bash start.sh' : 'node server.js';
-                log += `$ nohup ${startScript} &\n`;
+                log += `$ ${startScript}\n`;
                 try {
-                    const { spawn } = require('child_process');
-                    const parts = startScript.split(' ');
-                    const child = spawn(parts[0], parts.slice(1), {
-                        cwd: stRoot,
-                        detached: true,
-                        stdio: ['ignore', 'ignore', 'ignore'],
+                    const home = getSafeRoot();
+                    const pidFile = path.join(home, '.sillytavern.pid');
+                    execSync(`cd "${stRoot}" && nohup ${startScript} > /dev/null 2>&1 & echo $! > "${pidFile}"`, {
+                        encoding: 'utf-8', timeout: 5000, shell: true
                     });
-                    child.unref();
-                    log += '✅ SillyTavern 시작됨! (백그라운드)\n';
+                    let pid = '';
+                    try { pid = fs.readFileSync(pidFile, 'utf-8').trim(); } catch (e) {}
+                    log += `✅ SillyTavern 시작됨! (PID: ${pid})\n`;
                     log += '접속: http://localhost:8000\n';
                 } catch (e) {
                     log += '❌ 시작 실패: ' + (e.message || '') + '\n';
@@ -445,9 +443,25 @@ function init(app) {
             } else if (target === 'st-stop') {
                 // Stop SillyTavern
                 log += '⏹ SillyTavern 종료 중...\n';
+                const home = getSafeRoot();
+                const pidFile = path.join(home, '.sillytavern.pid');
                 try {
-                    log += execSync('pkill -f "node.*server.js" 2>&1 || echo "프로세스를 찾을 수 없습니다"', { encoding: 'utf-8', timeout: 5000 });
-                    log += '✅ SillyTavern 종료됨\n';
+                    let killed = false;
+                    if (fs.existsSync(pidFile)) {
+                        const pid = fs.readFileSync(pidFile, 'utf-8').trim();
+                        if (pid) {
+                            try {
+                                execSync(`kill ${pid} 2>/dev/null`, { encoding: 'utf-8', timeout: 3000 });
+                                log += `✅ PID ${pid} 종료됨\n`;
+                                killed = true;
+                            } catch (e) {}
+                        }
+                        try { fs.unlinkSync(pidFile); } catch (e) {}
+                    }
+                    if (!killed) {
+                        execSync('pkill -f "node.*server.js" 2>/dev/null || true', { encoding: 'utf-8', timeout: 5000, shell: true });
+                        log += '✅ SillyTavern 종료됨\n';
+                    }
                 } catch (e) {
                     log += e.stdout || '';
                     log += e.stderr || '';
@@ -490,25 +504,37 @@ function init(app) {
                 if (!libRoot) {
                     return res.status(400).json({ error: '도서관 폴더를 찾을 수 없습니다.' });
                 }
-                log += '🚀 도서관 시작 중...\n';
+
+                // Determine start command
+                let startCmd = 'node server.js';
+                if (fs.existsSync(path.join(libRoot, 'server.js'))) {
+                    startCmd = 'node server.js';
+                } else if (fs.existsSync(path.join(libRoot, 'index.js'))) {
+                    startCmd = 'node index.js';
+                } else {
+                    startCmd = 'npm start';
+                }
+
+                log += `🚀 도서관 시작 중... (${libRoot})\n`;
+                log += `$ ${startCmd}\n`;
+
+                // Check if already running
                 try {
-                    const { spawn } = require('child_process');
-                    // Try npm start, then node server.js
-                    let startCmd = 'npm';
-                    let startArgs = ['start'];
-                    if (fs.existsSync(path.join(libRoot, 'server.js'))) {
-                        startCmd = 'node';
-                        startArgs = ['server.js'];
-                    } else if (fs.existsSync(path.join(libRoot, 'index.js'))) {
-                        startCmd = 'node';
-                        startArgs = ['index.js'];
+                    const check = execSync(`pgrep -f "node.*(chat-library|perpage)" 2>/dev/null || true`, { encoding: 'utf-8' }).trim();
+                    if (check) {
+                        log += `⚠️ 이미 실행 중인 것 같습니다 (PID: ${check})\n`;
                     }
-                    const child = spawn(startCmd, startArgs, {
-                        cwd: libRoot, detached: true,
-                        stdio: ['ignore', 'ignore', 'ignore'],
+                } catch (e) {}
+
+                try {
+                    // Use nohup + shell for reliable background launch on Termux
+                    const pidFile = path.join(home, '.chat-library.pid');
+                    execSync(`cd "${libRoot}" && nohup ${startCmd} > /dev/null 2>&1 & echo $! > "${pidFile}"`, {
+                        encoding: 'utf-8', timeout: 5000, shell: true
                     });
-                    child.unref();
-                    log += `✅ 도서관 시작됨! (${startCmd} ${startArgs.join(' ')})\n`;
+                    let pid = '';
+                    try { pid = fs.readFileSync(pidFile, 'utf-8').trim(); } catch (e) {}
+                    log += `✅ 도서관 시작됨! (PID: ${pid})\n`;
                 } catch (e) {
                     log += '❌ 시작 실패: ' + (e.message || '') + '\n';
                 }
@@ -516,10 +542,35 @@ function init(app) {
                 return;
             } else if (target === 'library-stop') {
                 log += '⏹ 도서관 종료 중...\n';
+                const home = getSafeRoot();
+                const pidFile = path.join(home, '.chat-library.pid');
+
                 try {
-                    // Kill node processes running from chat-library folder
-                    log += execSync('pkill -f "node.*chat-library" 2>&1 || echo "프로세스를 찾을 수 없습니다"', { encoding: 'utf-8', timeout: 5000 });
-                    log += '✅ 도서관 종료됨\n';
+                    // Try PID file first
+                    let killed = false;
+                    if (fs.existsSync(pidFile)) {
+                        const pid = fs.readFileSync(pidFile, 'utf-8').trim();
+                        if (pid) {
+                            try {
+                                execSync(`kill ${pid} 2>/dev/null`, { encoding: 'utf-8', timeout: 3000 });
+                                log += `✅ PID ${pid} 종료됨\n`;
+                                killed = true;
+                            } catch (e) {
+                                log += `PID ${pid} 이미 종료되었거나 없음\n`;
+                            }
+                        }
+                        try { fs.unlinkSync(pidFile); } catch (e) {}
+                    }
+
+                    // Also try pkill as fallback
+                    if (!killed) {
+                        try {
+                            execSync(`pkill -f "node.*(chat-library|perpage)" 2>/dev/null || true`, { encoding: 'utf-8', timeout: 3000, shell: true });
+                            log += '✅ 도서관 프로세스 종료됨\n';
+                        } catch (e) {
+                            log += '프로세스를 찾을 수 없습니다\n';
+                        }
+                    }
                 } catch (e) {
                     log += (e.stdout || '') + (e.stderr || '');
                     log += '종료 시도 완료\n';
