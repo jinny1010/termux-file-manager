@@ -620,14 +620,14 @@ function init(app) {
     });
 
     // ===== TERMINAL =====
-    const { spawn: spawnChild } = require('child_process');
-    const pluginTerminals = {};
-    let pluginTermIdCounter = 0;
+    const { spawn: spawnTerm } = require('child_process');
+    const _terminals = {};
+    let _termIdCounter = 0;
 
-    function createPluginTerminal(cwd) {
-        const id = String(++pluginTermIdCounter);
-        const shell = process.env.SHELL || '/bin/bash';
-        const proc = spawnChild(shell, ['-i'], {
+    function _createTerminal(cwd) {
+        const id = String(++_termIdCounter);
+        const shell = process.env.SHELL || (fs.existsSync('/data/data/com.termux/files/usr/bin/bash') ? '/data/data/com.termux/files/usr/bin/bash' : '/bin/bash');
+        const proc = spawnTerm(shell, ['-i'], {
             cwd: cwd || getSafeRoot(),
             env: { ...process.env, TERM: 'xterm-256color', COLUMNS: '120', LINES: '40' },
             stdio: ['pipe', 'pipe', 'pipe'],
@@ -636,59 +636,59 @@ function init(app) {
 
         const term = { id, proc, buffer: [], clients: [], cwd: cwd || getSafeRoot(), alive: true };
 
-        const pushData = (data) => {
+        const push = (data) => {
             const text = data.toString('utf-8');
             term.buffer.push(text);
             if (term.buffer.length > 5000) term.buffer = term.buffer.slice(-3000);
-            for (const client of term.clients) {
-                try { client.write(`data: ${JSON.stringify({ type: 'output', data: text })}\n\n`); } catch (e) {}
+            for (const c of term.clients) {
+                try { c.write(`data: ${JSON.stringify({ type: 'output', data: text })}\n\n`); } catch (e) {}
             }
         };
 
-        proc.stdout.on('data', pushData);
-        proc.stderr.on('data', pushData);
+        proc.stdout.on('data', push);
+        proc.stderr.on('data', push);
         proc.on('exit', (code, signal) => {
             term.alive = false;
             const msg = `\r\n[프로세스 종료: code=${code}, signal=${signal}]\r\n`;
             term.buffer.push(msg);
-            for (const client of term.clients) {
-                try { client.write(`data: ${JSON.stringify({ type: 'exit', code, signal, data: msg })}\n\n`); } catch (e) {}
+            for (const c of term.clients) {
+                try { c.write(`data: ${JSON.stringify({ type: 'exit', code, signal, data: msg })}\n\n`); } catch (e) {}
             }
         });
         proc.on('error', (err) => {
             term.alive = false;
             const msg = `\r\n[오류: ${err.message}]\r\n`;
             term.buffer.push(msg);
-            for (const client of term.clients) {
-                try { client.write(`data: ${JSON.stringify({ type: 'error', data: msg })}\n\n`); } catch (e) {}
+            for (const c of term.clients) {
+                try { c.write(`data: ${JSON.stringify({ type: 'error', data: msg })}\n\n`); } catch (e) {}
             }
         });
 
-        pluginTerminals[id] = term;
-        console.log(`[${MODULE_NAME}] Terminal created: #${id}`);
+        _terminals[id] = term;
+        console.log(`[${MODULE_NAME}] Terminal #${id} created (cwd: ${term.cwd})`);
         return term;
     }
 
     router.post('/terminal/spawn', express.json(), (req, res) => {
         try {
-            const term = createPluginTerminal(req.body.cwd || '');
+            const term = _createTerminal(req.body.cwd || '');
             res.json({ id: term.id, alive: true });
         } catch (e) { res.status(500).json({ error: e.message }); }
     });
 
     router.get('/terminal/list', (_req, res) => {
-        res.json({ terminals: Object.values(pluginTerminals).map(t => ({ id: t.id, alive: t.alive, cwd: t.cwd })) });
+        res.json({ terminals: Object.values(_terminals).map(t => ({ id: t.id, alive: t.alive, cwd: t.cwd })) });
     });
 
     router.post('/terminal/input', express.json(), (req, res) => {
-        const term = pluginTerminals[req.body.id];
+        const term = _terminals[req.body.id];
         if (!term?.alive) return res.json({ error: '터미널 없음' });
         term.proc.stdin.write(req.body.data);
         res.json({ ok: true });
     });
 
     router.post('/terminal/signal', express.json(), (req, res) => {
-        const term = pluginTerminals[req.body.id];
+        const term = _terminals[req.body.id];
         if (!term?.alive) return res.json({ error: '터미널 없음' });
         const sig = req.body.signal || 'SIGINT';
         try { process.kill(-term.proc.pid, sig); } catch (e) {
@@ -698,18 +698,19 @@ function init(app) {
     });
 
     router.post('/terminal/kill', express.json(), (req, res) => {
-        const term = pluginTerminals[req.body.id];
+        const term = _terminals[req.body.id];
         if (term) {
             try { term.proc.kill('SIGKILL'); } catch (e) {}
             term.alive = false;
-            delete pluginTerminals[req.body.id];
+            if (term.eventSource) try { term.eventSource.close(); } catch (e) {}
+            delete _terminals[req.body.id];
         }
         res.json({ ok: true });
     });
 
     router.get('/terminal/stream', (req, res) => {
         const id = req.query.id;
-        const term = pluginTerminals[id];
+        const term = _terminals[id];
         if (!term) return res.status(404).end('터미널 없음');
 
         res.writeHead(200, {
@@ -719,6 +720,7 @@ function init(app) {
             'X-Accel-Buffering': 'no',
         });
 
+        // 기존 버퍼 전송
         if (term.buffer.length > 0) {
             res.write(`data: ${JSON.stringify({ type: 'history', data: term.buffer.join('') })}\n\n`);
         }
@@ -733,12 +735,6 @@ function init(app) {
             try { res.write(': ping\n\n'); } catch (e) { clearInterval(ping); }
         }, 15000);
         req.on('close', () => clearInterval(ping));
-    });
-
-    router.get('/terminal/buffer', (req, res) => {
-        const term = pluginTerminals[req.query.id];
-        if (!term) return res.json({ error: '터미널 없음' });
-        res.json({ buffer: term.buffer.join(''), alive: term.alive });
     });
 
     // Mount router
