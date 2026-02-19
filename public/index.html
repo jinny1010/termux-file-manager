@@ -221,6 +221,56 @@ body{font-family:var(--font-ui);background:var(--bg);color:var(--text);line-heig
 .toast{padding:8px 14px;background:var(--text);color:var(--surface);font-family:var(--font-ui);font-size:.78rem;border-radius:var(--radius);box-shadow:var(--shadow-md);margin-top:5px;animation:toastIn .3s ease}
 .toast.error{background:#c44}
 @keyframes toastIn{from{opacity:0;transform:translateY(8px)}to{opacity:1}}
+
+/* TERMINAL */
+#terminal-panel{display:none;flex-direction:column;height:100%;overflow:hidden;background:#1a1b26}
+.term-header{padding:8px 16px;border-bottom:1px solid #2a2b3d;display:flex;align-items:center;gap:8px;background:#16171f;flex-shrink:0}
+.term-header h2{font-size:.88rem;font-weight:600;flex:1;color:#a9b1d6}
+.term-header .term-id{font-size:.65rem;color:#565f89;font-family:'Courier New',monospace}
+.term-actions{display:flex;gap:4px;align-items:center}
+.term-btn{font-family:var(--font-ui);font-size:.72rem;padding:4px 10px;border:1px solid #2a2b3d;background:#1a1b26;color:#a9b1d6;cursor:pointer;border-radius:4px;transition:all .15s;white-space:nowrap}
+.term-btn:hover{background:#24283b;border-color:#414868}
+.term-btn:active{transform:translateY(1px)}
+.term-btn.danger{border-color:#f7768e44;color:#f7768e}
+.term-btn.danger:hover{background:#f7768e22}
+.term-btn.success{border-color:#9ece6a44;color:#9ece6a}
+.term-btn.success:hover{background:#9ece6a22}
+.term-btn.warn{border-color:#e0af6844;color:#e0af68}
+.term-btn.warn:hover{background:#e0af6822}
+.term-btn.primary{border-color:#7aa2f744;color:#7aa2f7}
+.term-btn.primary:hover{background:#7aa2f722}
+
+.term-output{flex:1;overflow-y:auto;padding:10px 14px;font-family:'Courier New','DejaVu Sans Mono',monospace;font-size:12.5px;line-height:1.55;color:#a9b1d6;white-space:pre-wrap;word-break:break-all;background:#1a1b26;user-select:text}
+.term-output::-webkit-scrollbar{width:6px}
+.term-output::-webkit-scrollbar-track{background:#1a1b26}
+.term-output::-webkit-scrollbar-thumb{background:#2a2b3d;border-radius:3px}
+.term-output::-webkit-scrollbar-thumb:hover{background:#414868}
+
+.term-input-bar{display:flex;align-items:center;gap:6px;padding:8px 12px;background:#16171f;border-top:1px solid #2a2b3d;flex-shrink:0}
+.term-input-bar .term-prompt{color:#9ece6a;font-family:'Courier New',monospace;font-size:12.5px;flex-shrink:0;user-select:none}
+.term-input{flex:1;font-family:'Courier New','DejaVu Sans Mono',monospace;font-size:12.5px;padding:6px 8px;border:1px solid #2a2b3d;background:#1a1b26;color:#c0caf5;border-radius:4px;outline:none}
+.term-input:focus{border-color:#7aa2f7}
+.term-input::placeholder{color:#565f89}
+.term-send-btn{font-family:var(--font-ui);font-size:.72rem;padding:6px 12px;border:1px solid #7aa2f744;background:#7aa2f722;color:#7aa2f7;cursor:pointer;border-radius:4px;white-space:nowrap}
+.term-send-btn:hover{background:#7aa2f744}
+
+.term-quick-bar{display:flex;gap:4px;padding:6px 12px;background:#16171f;border-top:1px solid #2a2b3d;flex-shrink:0;flex-wrap:wrap}
+.term-quick{font-size:.66rem;padding:3px 8px;border:1px solid #2a2b3d;background:#1a1b26;color:#bb9af7;cursor:pointer;border-radius:3px;transition:all .12s}
+.term-quick:hover{background:#24283b;border-color:#bb9af7}
+
+.term-status{display:flex;align-items:center;gap:6px;padding:4px 12px;background:#13141c;font-size:.63rem;color:#565f89;flex-shrink:0;border-top:1px solid #2a2b3d}
+.term-status-dot{width:6px;height:6px;border-radius:50%;background:#f7768e}
+.term-status-dot.alive{background:#9ece6a}
+
+/* 터미널 탭 선택 */
+.term-tabs{display:flex;gap:2px;padding:4px 12px 0;background:#13141c;flex-shrink:0;overflow-x:auto}
+.term-tab{font-size:.68rem;padding:4px 10px;background:#1a1b26;color:#565f89;cursor:pointer;border-radius:4px 4px 0 0;border:1px solid transparent;border-bottom:none;transition:all .12s;white-space:nowrap;display:flex;align-items:center;gap:4px}
+.term-tab:hover{color:#a9b1d6}
+.term-tab.active{color:#c0caf5;background:#1a1b26;border-color:#2a2b3d}
+.term-tab .term-tab-close{font-size:.75rem;opacity:.4;cursor:pointer;line-height:1}
+.term-tab .term-tab-close:hover{opacity:1;color:#f7768e}
+.term-tab-add{font-size:.72rem;padding:4px 8px;color:#565f89;cursor:pointer;align-self:center}
+.term-tab-add:hover{color:#9ece6a}
 </style>
 </head>
 <body>
@@ -232,6 +282,7 @@ body{font-family:var(--font-ui);background:var(--bg);color:var(--text);line-heig
       <span class="t-edit">✎</span>
     </div>
     <div class="topbar-actions">
+      <button class="btn small ghost" onclick="showTerminal()" title="터미널">🖥 터미널</button>
       <button class="btn small ghost" onclick="showGallery()">🖼 갤러리</button>
       <button class="btn small" onclick="triggerFileInput()">＋ 파일</button>
     </div>
@@ -299,6 +350,42 @@ body{font-family:var(--font-ui);background:var(--bg);color:var(--text);line-heig
         <span class="mes-time" id="galleryCount"></span>
       </div>
       <div class="gal-content" id="galleryContent"></div>
+    </div>
+
+    <!-- 터미널 -->
+    <div id="terminal-panel">
+      <div class="term-header">
+        <button class="btn small" style="border-color:#2a2b3d;color:#a9b1d6;background:#1a1b26" onclick="goHome()">← 서재</button>
+        <h2>🖥 터미널</h2>
+        <span class="term-id" id="termId"></span>
+        <div class="term-actions">
+          <button class="term-btn warn" onclick="termSignal('SIGINT')" title="Ctrl+C">⌃C</button>
+          <button class="term-btn danger" onclick="termKill()" title="세션 종료">✕ 종료</button>
+          <button class="term-btn" onclick="termClear()" title="화면 지우기">🗑 지우기</button>
+        </div>
+      </div>
+      <div class="term-tabs" id="termTabs">
+        <span class="term-tab-add" onclick="newTermTab()" title="새 터미널">＋</span>
+      </div>
+      <div class="term-output" id="termOutput"></div>
+      <div class="term-quick-bar" id="termQuickBar">
+        <span class="term-quick" onclick="termQuickCmd('cd ~/SillyTavern && ./start.sh')">▶ ST 시작</span>
+        <span class="term-quick" onclick="termSignal('SIGINT')">⌃C 중지</span>
+        <span class="term-quick" onclick="termQuickCmd('cd ~/SillyTavern && git pull')">⬇ ST 업데이트</span>
+        <span class="term-quick" onclick="termQuickCmd('ls -la')">ls -la</span>
+        <span class="term-quick" onclick="termQuickCmd('cat ~/SillyTavern/config.yaml')">ST config</span>
+        <span class="term-quick" onclick="termQuickCmd('free -h && df -h')">시스템 상태</span>
+        <span class="term-quick" onclick="termQuickCmd('ps aux | grep node')">노드 프로세스</span>
+      </div>
+      <div class="term-input-bar">
+        <span class="term-prompt">$</span>
+        <input type="text" class="term-input" id="termInput" placeholder="명령어 입력..." autocomplete="off" spellcheck="false">
+        <button class="term-send-btn" onclick="termSendInput()">전송</button>
+      </div>
+      <div class="term-status">
+        <span class="term-status-dot" id="termStatusDot"></span>
+        <span id="termStatusText">연결 안 됨</span>
+      </div>
     </div>
   </main>
 </div>
@@ -720,7 +807,7 @@ function showGallery(){
 
 // ── NAV ──
 function hideAllPanels(){
-  for(const id of['welcome','home-view','chat-list-panel','chat-viewer','gallery-panel'])
+  for(const id of['welcome','home-view','chat-list-panel','chat-viewer','gallery-panel','terminal-panel'])
     document.getElementById(id).style.display='none';
 }
 function goHome(){
@@ -757,6 +844,267 @@ function toast(msg,type='success'){
   const el=document.createElement('div');el.className=`toast ${type}`;el.textContent=msg;
   document.getElementById('toastContainer').appendChild(el);setTimeout(()=>el.remove(),3000);
 }
+// ── TERMINAL ──
+const termState = {
+  sessions: {},      // id -> { id, alive, eventSource }
+  activeId: null,
+  history: [],
+  historyIdx: -1,
+};
+
+async function showTerminal() {
+  hideAllPanels();
+  document.getElementById('terminal-panel').style.display = 'flex';
+  // 활성 세션 없으면 자동 생성
+  if (!termState.activeId || !termState.sessions[termState.activeId]?.alive) {
+    await newTermTab();
+  } else {
+    renderTermTabs();
+    termScrollBottom();
+  }
+  document.getElementById('termInput').focus();
+}
+
+async function newTermTab(cwd) {
+  try {
+    const r = await fetch('/api/terminal/spawn', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cwd: cwd || '' }),
+    });
+    const d = await r.json();
+    if (d.error) { toast('터미널 생성 실패: ' + d.error, 'error'); return; }
+
+    const session = { id: d.id, alive: true, buffer: '', eventSource: null };
+    termState.sessions[d.id] = session;
+    termState.activeId = d.id;
+
+    // SSE 연결
+    connectTermSSE(d.id);
+    renderTermTabs();
+    updateTermStatus();
+    document.getElementById('termOutput').textContent = '';
+    document.getElementById('termInput').focus();
+  } catch (e) {
+    toast('터미널 연결 실패', 'error');
+  }
+}
+
+function connectTermSSE(id) {
+  const session = termState.sessions[id];
+  if (!session) return;
+  if (session.eventSource) { try { session.eventSource.close(); } catch (e) {} }
+
+  const es = new EventSource(`/api/terminal/stream?id=${id}`);
+  session.eventSource = es;
+
+  es.onmessage = (e) => {
+    try {
+      const msg = JSON.parse(e.data);
+      if (msg.type === 'history') {
+        session.buffer = msg.data;
+      } else if (msg.type === 'output') {
+        session.buffer += msg.data;
+      } else if (msg.type === 'exit') {
+        session.buffer += msg.data || '';
+        session.alive = false;
+        updateTermStatus();
+        renderTermTabs();
+      } else if (msg.type === 'error') {
+        session.buffer += msg.data || '';
+        session.alive = false;
+        updateTermStatus();
+      }
+      // 현재 활성 탭이면 화면 업데이트
+      if (termState.activeId === id) {
+        renderTermOutput();
+      }
+    } catch (err) {}
+  };
+
+  es.onerror = () => {
+    // 재연결은 EventSource가 자동으로 시도
+  };
+}
+
+function renderTermOutput() {
+  const session = termState.sessions[termState.activeId];
+  if (!session) return;
+  const el = document.getElementById('termOutput');
+
+  // ANSI 코드 간단 처리 (색상 제거하고 텍스트만)
+  let text = session.buffer;
+  // ANSI escape 시퀀스 제거
+  text = text.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '');
+  text = text.replace(/\x1b\][^\x07]*\x07/g, ''); // OSC sequences
+  text = text.replace(/\x1b[()][A-Z0-9]/g, '');    // charset
+  text = text.replace(/\r(?!\n)/g, '');              // bare CR
+  // 버퍼가 너무 크면 뒤쪽만 유지
+  if (text.length > 200000) text = text.slice(-150000);
+
+  el.textContent = text;
+  termScrollBottom();
+}
+
+function termScrollBottom() {
+  const el = document.getElementById('termOutput');
+  requestAnimationFrame(() => { el.scrollTop = el.scrollHeight; });
+}
+
+function renderTermTabs() {
+  const container = document.getElementById('termTabs');
+  const tabs = Object.values(termState.sessions).map(s => {
+    const active = s.id === termState.activeId ? 'active' : '';
+    const dot = s.alive ? '🟢' : '⚫';
+    return `<span class="term-tab ${active}" onclick="switchTermTab('${s.id}')">
+      ${dot} #${s.id}
+      <span class="term-tab-close" onclick="event.stopPropagation();closeTermTab('${s.id}')">×</span>
+    </span>`;
+  }).join('');
+  container.innerHTML = tabs + `<span class="term-tab-add" onclick="newTermTab()" title="새 터미널">＋</span>`;
+  document.getElementById('termId').textContent = termState.activeId ? `#${termState.activeId}` : '';
+}
+
+function switchTermTab(id) {
+  termState.activeId = id;
+  renderTermTabs();
+  renderTermOutput();
+  updateTermStatus();
+  document.getElementById('termInput').focus();
+}
+
+async function closeTermTab(id) {
+  const session = termState.sessions[id];
+  if (session) {
+    if (session.eventSource) { try { session.eventSource.close(); } catch (e) {} }
+    if (session.alive) {
+      try { await fetch('/api/terminal/kill', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id }),
+      }); } catch (e) {}
+    }
+    delete termState.sessions[id];
+  }
+  // 다른 탭으로 전환
+  const remaining = Object.keys(termState.sessions);
+  if (remaining.length > 0) {
+    termState.activeId = remaining[remaining.length - 1];
+    renderTermTabs();
+    renderTermOutput();
+    updateTermStatus();
+  } else {
+    termState.activeId = null;
+    renderTermTabs();
+    document.getElementById('termOutput').textContent = '';
+    updateTermStatus();
+  }
+}
+
+function updateTermStatus() {
+  const session = termState.sessions[termState.activeId];
+  const dot = document.getElementById('termStatusDot');
+  const text = document.getElementById('termStatusText');
+  if (!session) {
+    dot.className = 'term-status-dot';
+    text.textContent = '연결 안 됨';
+  } else if (session.alive) {
+    dot.className = 'term-status-dot alive';
+    text.textContent = `세션 #${session.id} 실행 중`;
+  } else {
+    dot.className = 'term-status-dot';
+    text.textContent = `세션 #${session.id} 종료됨`;
+  }
+}
+
+async function termSendInput() {
+  const input = document.getElementById('termInput');
+  const cmd = input.value;
+  if (!termState.activeId) { toast('터미널 세션이 없습니다', 'error'); return; }
+  const session = termState.sessions[termState.activeId];
+  if (!session?.alive) { toast('터미널이 종료되었습니다. 새 세션을 만드세요.', 'error'); return; }
+
+  // 히스토리 저장
+  if (cmd.trim()) {
+    termState.history.push(cmd);
+    if (termState.history.length > 200) termState.history = termState.history.slice(-100);
+  }
+  termState.historyIdx = -1;
+
+  try {
+    await fetch('/api/terminal/input', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: termState.activeId, data: cmd + '\n' }),
+    });
+    input.value = '';
+  } catch (e) {
+    toast('전송 실패', 'error');
+  }
+}
+
+async function termSignal(sig) {
+  if (!termState.activeId) return;
+  try {
+    await fetch('/api/terminal/signal', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: termState.activeId, signal: sig || 'SIGINT' }),
+    });
+  } catch (e) {
+    toast('시그널 전송 실패', 'error');
+  }
+}
+
+async function termKill() {
+  if (!termState.activeId) return;
+  if (!confirm('이 터미널 세션을 완전히 종료할까요?')) return;
+  await closeTermTab(termState.activeId);
+}
+
+function termClear() {
+  const session = termState.sessions[termState.activeId];
+  if (session) session.buffer = '';
+  document.getElementById('termOutput').textContent = '';
+}
+
+function termQuickCmd(cmd) {
+  if (!termState.activeId || !termState.sessions[termState.activeId]?.alive) {
+    toast('터미널 세션이 없거나 종료됨', 'error');
+    return;
+  }
+  fetch('/api/terminal/input', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id: termState.activeId, data: cmd + '\n' }),
+  }).catch(() => toast('전송 실패', 'error'));
+}
+
+// 터미널 입력 키 이벤트
+document.addEventListener('DOMContentLoaded', () => {
+  const termInput = document.getElementById('termInput');
+  if (termInput) {
+    termInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); termSendInput(); }
+      else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (termState.history.length > 0) {
+          if (termState.historyIdx < 0) termState.historyIdx = termState.history.length;
+          termState.historyIdx = Math.max(0, termState.historyIdx - 1);
+          termInput.value = termState.history[termState.historyIdx] || '';
+        }
+      }
+      else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        if (termState.historyIdx >= 0) {
+          termState.historyIdx = Math.min(termState.history.length, termState.historyIdx + 1);
+          termInput.value = termState.history[termState.historyIdx] || '';
+        }
+      }
+      else if (e.key === 'c' && e.ctrlKey) {
+        e.preventDefault();
+        termSignal('SIGINT');
+      }
+    });
+  }
+});
+
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeLightbox();closeTagModal();}});
 </script>
 </body>

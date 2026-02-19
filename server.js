@@ -245,6 +245,68 @@ function serve(fp,res){try{const d=fs.readFileSync(fp);res.writeHead(200,{'Conte
 function json(res,d){res.writeHead(200,{'Content-Type':'application/json; charset=utf-8'});res.end(JSON.stringify(d));}
 function body(req){return new Promise(r=>{let b='';req.on('data',c=>b+=c);req.on('end',()=>r(b));});}
 
+// ── 터미널 관리 ──
+const { spawn } = require('child_process');
+
+const terminals = {}; // id -> { proc, buffer, clients[], cwd }
+let termIdCounter = 0;
+
+function createTerminal(cwd) {
+    const id = String(++termIdCounter);
+    const shell = process.env.SHELL || '/bin/bash';
+    const proc = spawn(shell, ['-i'], {
+        cwd: cwd || HOME,
+        env: { ...process.env, TERM: 'xterm-256color', COLUMNS: '120', LINES: '40' },
+        stdio: ['pipe', 'pipe', 'pipe'],
+        detached: true,
+    });
+
+    const term = { id, proc, buffer: [], clients: [], cwd: cwd || HOME, alive: true };
+
+    const pushData = (data) => {
+        const text = data.toString('utf-8');
+        term.buffer.push(text);
+        // 버퍼 최대 5000줄 유지
+        if (term.buffer.length > 5000) term.buffer = term.buffer.slice(-3000);
+        // SSE 클라이언트에 전송
+        for (const client of term.clients) {
+            try { client.write(`data: ${JSON.stringify({ type: 'output', data: text })}\n\n`); } catch (e) {}
+        }
+    };
+
+    proc.stdout.on('data', pushData);
+    proc.stderr.on('data', pushData);
+
+    proc.on('exit', (code, signal) => {
+        term.alive = false;
+        const msg = `\r\n[프로세스 종료: code=${code}, signal=${signal}]\r\n`;
+        term.buffer.push(msg);
+        for (const client of term.clients) {
+            try {
+                client.write(`data: ${JSON.stringify({ type: 'exit', code, signal, data: msg })}\n\n`);
+            } catch (e) {}
+        }
+    });
+
+    proc.on('error', (err) => {
+        term.alive = false;
+        const msg = `\r\n[오류: ${err.message}]\r\n`;
+        term.buffer.push(msg);
+        for (const client of term.clients) {
+            try { client.write(`data: ${JSON.stringify({ type: 'error', data: msg })}\n\n`); } catch (e) {}
+        }
+    });
+
+    terminals[id] = term;
+    console.log(`  🖥  터미널 생성: #${id} (cwd: ${cwd || HOME})`);
+    return term;
+}
+
+function getOrCreateTerminal(id, cwd) {
+    if (id && terminals[id] && terminals[id].alive) return terminals[id];
+    return createTerminal(cwd);
+}
+
 console.log('\n  📚 Chat Library\n  ─────────────────\n  경로 탐색 중...\n');
 const dataRoots = findDataRoot();
 console.log(`\n  총 ${dataRoots.length}개 경로\n`);
@@ -307,6 +369,97 @@ http.createServer(async(req,res)=>{
         if(req.method==='POST'){try{const d=JSON.parse(await body(req)),c=loadJson(SETTINGS_FILE);Object.assign(c,d);saveJson(SETTINGS_FILE,c);json(res,{ok:true});}catch(e){res.writeHead(400);json(res,{error:'bad'});}return;}
     }
     if(pn==='/api/roots'){json(res,{roots:dataRoots});return;}
+
+    // ── 터미널 API ──
+    if(pn==='/api/terminal/spawn'){
+        if(req.method!=='POST'){res.writeHead(405);res.end();return;}
+        try{
+            const b=JSON.parse(await body(req));
+            const term=createTerminal(b.cwd||HOME);
+            json(res,{id:term.id,alive:true});
+        }catch(e){res.writeHead(500);json(res,{error:e.message});}
+        return;
+    }
+    if(pn==='/api/terminal/list'){
+        const list=Object.values(terminals).map(t=>({id:t.id,alive:t.alive,cwd:t.cwd}));
+        json(res,{terminals:list});return;
+    }
+    if(pn==='/api/terminal/input'){
+        if(req.method!=='POST'){res.writeHead(405);res.end();return;}
+        try{
+            const b=JSON.parse(await body(req));
+            const term=terminals[b.id];
+            if(!term||!term.alive){json(res,{error:'터미널 없음'});return;}
+            term.proc.stdin.write(b.data);
+            json(res,{ok:true});
+        }catch(e){json(res,{error:e.message});}
+        return;
+    }
+    if(pn==='/api/terminal/signal'){
+        if(req.method!=='POST'){res.writeHead(405);res.end();return;}
+        try{
+            const b=JSON.parse(await body(req));
+            const term=terminals[b.id];
+            if(!term||!term.alive){json(res,{error:'터미널 없음'});return;}
+            const sig=b.signal||'SIGINT';
+            // 프로세스 그룹에 시그널 전달 (자식 프로세스까지)
+            try { process.kill(-term.proc.pid, sig); } catch(e) {
+                try { term.proc.kill(sig); } catch(e2) {}
+            }
+            json(res,{ok:true,signal:sig});
+        }catch(e){json(res,{error:e.message});}
+        return;
+    }
+    if(pn==='/api/terminal/kill'){
+        if(req.method!=='POST'){res.writeHead(405);res.end();return;}
+        try{
+            const b=JSON.parse(await body(req));
+            const term=terminals[b.id];
+            if(term){
+                try{ term.proc.kill('SIGKILL'); }catch(e){}
+                term.alive=false;
+                delete terminals[b.id];
+            }
+            json(res,{ok:true});
+        }catch(e){json(res,{error:e.message});}
+        return;
+    }
+    if(pn==='/api/terminal/stream'){
+        const id=p.query.id;
+        const term=terminals[id];
+        if(!term){res.writeHead(404);res.end('터미널 없음');return;}
+        res.writeHead(200,{
+            'Content-Type':'text/event-stream',
+            'Cache-Control':'no-cache',
+            'Connection':'keep-alive',
+            'X-Accel-Buffering':'no',
+        });
+        // 기존 버퍼 전송
+        if(term.buffer.length>0){
+            const hist=term.buffer.join('');
+            res.write(`data: ${JSON.stringify({type:'history',data:hist})}\n\n`);
+        }
+        if(!term.alive){
+            res.write(`data: ${JSON.stringify({type:'exit',code:null,data:'[이미 종료된 세션]'})}\n\n`);
+        }
+        term.clients.push(res);
+        req.on('close',()=>{
+            term.clients=term.clients.filter(c=>c!==res);
+        });
+        // keep alive ping
+        const ping=setInterval(()=>{
+            try{res.write(': ping\n\n');}catch(e){clearInterval(ping);}
+        },15000);
+        req.on('close',()=>clearInterval(ping));
+        return;
+    }
+    if(pn==='/api/terminal/buffer'){
+        const id=p.query.id;
+        const term=terminals[id];
+        if(!term){json(res,{error:'터미널 없음'});return;}
+        json(res,{buffer:term.buffer.join(''),alive:term.alive});
+        return;
+    }
 
     let fp=pn==='/'?'/index.html':pn;
     fp=path.join(__dirname,'public',fp);
