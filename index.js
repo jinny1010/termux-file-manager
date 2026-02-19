@@ -505,22 +505,26 @@ function init(app) {
                     return res.status(400).json({ error: '도서관 폴더를 찾을 수 없습니다.' });
                 }
 
-                // Determine start command
-                let startCmd = 'node server.js';
-                if (fs.existsSync(path.join(libRoot, 'server.js'))) {
+                // Determine start command (library.js 우선 탐색)
+                let startCmd = 'npm start';
+                if (fs.existsSync(path.join(libRoot, 'library.js'))) {
+                    startCmd = 'node library.js';
+                } else if (fs.existsSync(path.join(libRoot, 'server.js'))) {
                     startCmd = 'node server.js';
                 } else if (fs.existsSync(path.join(libRoot, 'index.js'))) {
                     startCmd = 'node index.js';
-                } else {
-                    startCmd = 'npm start';
                 }
+
+                // 로그 파일 경로
+                const libLogFile = path.join(home, 'chat-library.log');
 
                 log += `🚀 도서관 시작 중... (${libRoot})\n`;
                 log += `$ ${startCmd}\n`;
+                log += `📋 로그 파일: ${libLogFile}\n`;
 
                 // Check if already running
                 try {
-                    const check = execSync(`pgrep -f "node.*(chat-library|perpage)" 2>/dev/null || true`, { encoding: 'utf-8' }).trim();
+                    const check = execSync(`pgrep -f "node.*(library|chat-library|perpage)" 2>/dev/null || true`, { encoding: 'utf-8' }).trim();
                     if (check) {
                         log += `⚠️ 이미 실행 중인 것 같습니다 (PID: ${check})\n`;
                     }
@@ -528,13 +532,15 @@ function init(app) {
 
                 try {
                     // Use nohup + shell for reliable background launch on Termux
+                    // 로그를 ~/chat-library.log 에 저장
                     const pidFile = path.join(home, '.chat-library.pid');
-                    execSync(`cd "${libRoot}" && nohup ${startCmd} > /dev/null 2>&1 & echo $! > "${pidFile}"`, {
+                    execSync(`cd "${libRoot}" && nohup ${startCmd} >> "${libLogFile}" 2>&1 & echo $! > "${pidFile}"`, {
                         encoding: 'utf-8', timeout: 5000, shell: true
                     });
                     let pid = '';
                     try { pid = fs.readFileSync(pidFile, 'utf-8').trim(); } catch (e) {}
                     log += `✅ 도서관 시작됨! (PID: ${pid})\n`;
+                    log += `💡 터먹스에서 로그 보기: tail -f ~/chat-library.log\n`;
                 } catch (e) {
                     log += '❌ 시작 실패: ' + (e.message || '') + '\n';
                 }
@@ -565,7 +571,7 @@ function init(app) {
                     // Also try pkill as fallback
                     if (!killed) {
                         try {
-                            execSync(`pkill -f "node.*(chat-library|perpage)" 2>/dev/null || true`, { encoding: 'utf-8', timeout: 3000, shell: true });
+                            execSync(`pkill -f "node.*(library|chat-library|perpage)" 2>/dev/null || true`, { encoding: 'utf-8', timeout: 3000, shell: true });
                             log += '✅ 도서관 프로세스 종료됨\n';
                         } catch (e) {
                             log += '프로세스를 찾을 수 없습니다\n';
@@ -574,6 +580,30 @@ function init(app) {
                 } catch (e) {
                     log += (e.stdout || '') + (e.stderr || '');
                     log += '종료 시도 완료\n';
+                }
+                res.json({ success: true, log });
+                return;
+            }
+
+            } else if (target === 'library-log') {
+                // View chat-library log
+                const home = getSafeRoot();
+                const libLogFile = path.join(home, 'chat-library.log');
+                const lines = parseInt(req.body.lines) || 100;
+
+                if (!fs.existsSync(libLogFile)) {
+                    return res.json({ success: true, log: '📋 로그 파일이 아직 없습니다.\n도서관을 먼저 실행해 주세요.' });
+                }
+
+                try {
+                    const content = fs.readFileSync(libLogFile, 'utf-8');
+                    const allLines = content.split('\n');
+                    const tail = allLines.slice(-lines).join('\n');
+                    log += `📋 chat-library.log (최근 ${Math.min(lines, allLines.length)}줄)\n`;
+                    log += '─'.repeat(40) + '\n';
+                    log += tail;
+                } catch (e) {
+                    log += '❌ 로그 읽기 실패: ' + (e.message || '') + '\n';
                 }
                 res.json({ success: true, log });
                 return;
