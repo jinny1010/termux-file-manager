@@ -641,6 +641,7 @@ html, body {
 <!-- CONTEXT MENU -->
 <div class="context-menu" id="contextMenu">
     <div class="context-menu-item" onclick="downloadSelected()">📥 다운로드</div>
+    <div class="context-menu-item" id="ctxDownloadZip" onclick="downloadFolderZip()" style="display:none">📦 폴더 압축 다운로드</div>
     <div class="context-menu-item" onclick="previewSelected()">👁 미리보기</div>
     <div class="context-menu-item" onclick="copySelected()">📋 복사</div>
     <div class="context-menu-item" onclick="renameSelected()">✏️ 이름 변경</div>
@@ -871,7 +872,10 @@ function showContext(ev, idx) {
     selectItem(idx, ev);
     const menu = document.getElementById('contextMenu');
     menu.style.left = Math.min(ev.clientX, window.innerWidth - 180) + 'px';
-    menu.style.top = Math.min(ev.clientY, window.innerHeight - 160) + 'px';
+    menu.style.top = Math.min(ev.clientY, window.innerHeight - 200) + 'px';
+    // Show/hide folder zip download option
+    const zipItem = document.getElementById('ctxDownloadZip');
+    zipItem.style.display = (selectedItem && selectedItem.isDirectory) ? '' : 'none';
     menu.classList.add('active');
 }
 
@@ -881,7 +885,8 @@ document.addEventListener('click', () => {
 
 // ===== ACTIONS =====
 async function downloadSelected() {
-    if (!selectedItem || selectedItem.isDirectory) return toast('파일을 선택해주세요', 'error');
+    if (!selectedItem) return toast('파일 또는 폴더를 선택해주세요', 'error');
+    if (selectedItem.isDirectory) return downloadFolderZip();
     const filePath = getItemPath(selectedItem);
     try {
         const res = await fetch(API_BASE + '/download', {
@@ -899,6 +904,35 @@ async function downloadSelected() {
         toast('다운로드 완료: ' + selectedItem.name);
     } catch (err) {
         toast('다운로드 실패: ' + err.message, 'error');
+    }
+}
+
+async function downloadFolderZip() {
+    if (!selectedItem || !selectedItem.isDirectory) return toast('폴더를 선택해주세요', 'error');
+    const folderPath = getItemPath(selectedItem);
+    const folderName = selectedItem.name;
+    toast('📦 폴더 압축 중... 잠시 기다려주세요');
+
+    try {
+        const res = await fetch(API_BASE + '/download-zip', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path: folderPath }),
+        });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({ error: res.statusText }));
+            throw new Error(err.error || 'Download failed');
+        }
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = folderName + '.tar.gz';
+        a.click();
+        URL.revokeObjectURL(url);
+        toast('📦 압축 다운로드 완료: ' + folderName + '.tar.gz');
+    } catch (err) {
+        toast('압축 다운로드 실패: ' + err.message, 'error');
     }
 }
 
@@ -1497,6 +1531,9 @@ function toggleTerminal() {
 
 async function termNewTab(cwd) {
     try {
+        document.getElementById('termOutput').textContent = '터미널 연결 중...';
+
+        // Create a lightweight session (spawn is still used for background process + SSE)
         const res = await fetch(API_BASE + '/terminal/spawn', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1505,16 +1542,36 @@ async function termNewTab(cwd) {
         const d = await res.json();
         if (d.error) { toast('터미널 생성 실패: ' + d.error, 'error'); return; }
 
-        const session = { id: d.id, alive: true, buffer: '', eventSource: null };
+        const homeDir = '/data/data/com.termux/files/home';
+        const session = { id: d.id, alive: true, buffer: '', eventSource: null, cwd: cwd || homeDir };
         termState.sessions[d.id] = session;
         termState.activeId = d.id;
+
+        // Connect SSE in background (may or may not work)
         termConnectSSE(d.id);
         termRenderTabs();
         termUpdateStatus();
-        document.getElementById('termOutput').textContent = '';
+
+        // Run initial command via exec to show welcome + pwd
+        try {
+            const execRes = await fetch(API_BASE + '/terminal/exec', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    command: 'echo "=== 터미널 #' + d.id + ' ===" && echo "$(whoami)@$(hostname):$(pwd)" && echo "---"',
+                    sessionId: d.id,
+                }),
+            });
+            const execData = await execRes.json();
+            session.buffer = (execData.output || '') + '\n';
+            if (execData.cwd) session.cwd = execData.cwd;
+        } catch (e) {
+            session.buffer = '터미널 연결됨 (exec 모드)\n';
+        }
+        termRenderOutput();
         document.getElementById('termInput')?.focus();
     } catch (e) {
-        toast('터미널 연결 실패', 'error');
+        toast('터미널 연결 실패: ' + e.message, 'error');
+        document.getElementById('termOutput').textContent = '❌ 터미널 연결 실패: ' + e.message;
     }
 }
 
@@ -1540,7 +1597,24 @@ function termConnectSSE(id) {
                 termRenderTabs();
             }
             if (termState.activeId === id) termRenderOutput();
-        } catch (err) {}
+        } catch (err) {
+            console.error('[Terminal SSE parse error]', err);
+        }
+    };
+
+    es.onerror = (e) => {
+        console.error('[Terminal SSE error]', e);
+        // If we lost connection, try to reconnect once after 2s
+        if (session.alive && !session._reconnecting) {
+            session._reconnecting = true;
+            setTimeout(() => {
+                session._reconnecting = false;
+                if (session.alive) {
+                    console.log('[Terminal] Reconnecting SSE for #' + id);
+                    termConnectSSE(id);
+                }
+            }, 2000);
+        }
     };
 }
 
@@ -1549,11 +1623,14 @@ function termRenderOutput() {
     if (!session) return;
     const el = document.getElementById('termOutput');
     let text = session.buffer;
-    // Strip ANSI
-    text = text.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '');
-    text = text.replace(/\x1b\][^\x07]*\x07/g, '');
-    text = text.replace(/\x1b[()][A-Z0-9]/g, '');
-    text = text.replace(/\r(?!\n)/g, '');
+    // Strip ANSI escape sequences (comprehensive)
+    text = text.replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, '');  // CSI sequences
+    text = text.replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, '');  // OSC sequences
+    text = text.replace(/\x1b[()][A-Z0-9]/g, '');  // Character set
+    text = text.replace(/\x1b[>=<]/g, '');  // Keypad modes
+    text = text.replace(/\x1b\[[\?]?[0-9;]*[hl]/g, '');  // Mode set/reset
+    text = text.replace(/\r(?!\n)/g, '');  // Bare carriage returns
+    text = text.replace(/\x07/g, '');  // Bell
     if (text.length > 200000) text = text.slice(-150000);
     el.textContent = text;
     requestAnimationFrame(() => { el.scrollTop = el.scrollHeight; });
@@ -1612,7 +1689,8 @@ function termUpdateStatus() {
         text.textContent = '연결 안 됨';
     } else if (session.alive) {
         dot.className = 'term-dot alive';
-        text.textContent = `세션 #${session.id} 실행 중`;
+        const shortCwd = session.cwd ? session.cwd.replace(/^\/data\/data\/com\.termux\/files\/home/, '~') : '~';
+        text.textContent = `세션 #${session.id} | ${shortCwd}`;
     } else {
         dot.className = 'term-dot';
         text.textContent = `세션 #${session.id} 종료됨`;
@@ -1630,14 +1708,35 @@ async function termSendInput() {
         if (termState.cmdHistory.length > 200) termState.cmdHistory = termState.cmdHistory.slice(-100);
     }
     termState.histIdx = -1;
+    input.value = '';
+
+    // Show prompt + command
+    const promptPath = session.cwd ? session.cwd.replace(/^\/data\/data\/com\.termux\/files\/home/, '~') : '~';
+    session.buffer += promptPath + '$ ' + cmd + '\n';
+    termRenderOutput();
+
+    if (!cmd.trim()) return;
 
     try {
-        await fetch(API_BASE + '/terminal/input', {
+        const execRes = await fetch(API_BASE + '/terminal/exec', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id: termState.activeId, data: cmd + '\n' }),
+            body: JSON.stringify({ command: cmd, sessionId: session.id }),
         });
-        input.value = '';
-    } catch (e) { toast('전송 실패', 'error'); }
+        const execData = await execRes.json();
+
+        // Update cwd from server
+        if (execData.cwd) session.cwd = execData.cwd;
+
+        if (execData.output) {
+            session.buffer += execData.output;
+            if (!execData.output.endsWith('\n')) session.buffer += '\n';
+        }
+        termRenderOutput();
+        termUpdateStatus();
+    } catch (e) {
+        session.buffer += '❌ 실행 실패: ' + e.message + '\n';
+        termRenderOutput();
+    }
 }
 
 async function termSignal(sig) {
@@ -1665,10 +1764,8 @@ function termClearScreen() {
 function termQuick(cmd) {
     const session = termState.sessions[termState.activeId];
     if (!session?.alive) { toast('터미널이 없거나 종료됨', 'error'); return; }
-    fetch(API_BASE + '/terminal/input', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: termState.activeId, data: cmd + '\n' }),
-    }).catch(() => toast('전송 실패', 'error'));
+    document.getElementById('termInput').value = cmd;
+    termSendInput();
 }
 
 // 터미널 입력 키 이벤트

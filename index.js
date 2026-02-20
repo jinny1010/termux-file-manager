@@ -127,6 +127,52 @@ function init(app) {
         }
     });
 
+    // ===== DOWNLOAD folder as zip =====
+    router.post('/download-zip', express.json(), (req, res) => {
+        try {
+            const { execSync } = require('child_process');
+            const targetPath = resolveSafe(req.body.path);
+            if (!fs.existsSync(targetPath)) {
+                return res.status(404).json({ error: 'Path not found' });
+            }
+            const stat = fs.statSync(targetPath);
+            if (!stat.isDirectory()) {
+                return res.status(400).json({ error: 'Not a directory. Use download for files.' });
+            }
+
+            const folderName = path.basename(targetPath);
+            const tmpDir = path.join(getSafeRoot(), '.st-filemanager-tmp');
+            fs.mkdirSync(tmpDir, { recursive: true });
+            const zipName = `${folderName}_${Date.now()}.tar.gz`;
+            const zipPath = path.join(tmpDir, zipName);
+
+            // Create tar.gz archive
+            const parentDir = path.dirname(targetPath);
+            execSync(`tar -czf "${zipPath}" -C "${parentDir}" "${folderName}"`, {
+                encoding: 'utf-8',
+                timeout: 300000, // 5 min timeout for large folders
+            });
+
+            res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(folderName)}.tar.gz"`);
+            res.setHeader('Content-Type', 'application/gzip');
+
+            const fileStream = fs.createReadStream(zipPath);
+            fileStream.pipe(res);
+            fileStream.on('end', () => {
+                // Clean up temp file
+                try { fs.unlinkSync(zipPath); } catch (e) {}
+            });
+            fileStream.on('error', (err) => {
+                try { fs.unlinkSync(zipPath); } catch (e) {}
+                if (!res.headersSent) {
+                    res.status(500).json({ error: err.message });
+                }
+            });
+        } catch (err) {
+            res.status(400).json({ error: err.message });
+        }
+    });
+
     // ===== UPLOAD file(s) with folder structure support =====
     // Multer error handler wrapper
     function uploadMiddleware(req, res, next) {
@@ -620,94 +666,312 @@ function init(app) {
     });
 
     // ===== TERMINAL =====
-    const { spawn: spawnTerm } = require('child_process');
+    const { spawn: _termSpawn } = require('child_process');
     const _terminals = {};
     let _termIdCounter = 0;
 
     function _createTerminal(cwd) {
         const id = String(++_termIdCounter);
-        const shell = process.env.SHELL || (fs.existsSync('/data/data/com.termux/files/usr/bin/bash') ? '/data/data/com.termux/files/usr/bin/bash' : '/bin/bash');
-        const proc = spawnTerm(shell, ['-i'], {
-            cwd: cwd || getSafeRoot(),
-            env: { ...process.env, TERM: 'xterm-256color', COLUMNS: '120', LINES: '40' },
+        const homeDir = process.env.HOME || '/data/data/com.termux/files/home';
+        const safeCwd = cwd || homeDir;
+        const isTermux = fs.existsSync('/data/data/com.termux');
+
+        // Find the shell
+        let shell = '/bin/sh';
+        const shellCandidates = [
+            process.env.SHELL,
+            '/data/data/com.termux/files/usr/bin/bash',
+            '/data/data/com.termux/files/usr/bin/sh',
+            '/bin/bash',
+            '/bin/sh',
+        ];
+        for (const s of shellCandidates) {
+            if (s && fs.existsSync(s)) { shell = s; break; }
+        }
+
+        const envVars = {
+            ...process.env,
+            TERM: 'dumb',
+            HOME: homeDir,
+            PS1: '\\u@termux:\\w$ ',
+            PS2: '> ',
+            LANG: process.env.LANG || 'en_US.UTF-8',
+            COLUMNS: '120',
+            LINES: '40',
+            // Force line-buffered output
+            PYTHONUNBUFFERED: '1',
+            NODE_DISABLE_COLORS: '1',
+        };
+
+        // On Termux, set proper PATH
+        if (isTermux) {
+            envVars.PATH = process.env.PATH || '/data/data/com.termux/files/usr/bin:/data/data/com.termux/files/usr/bin/applets';
+            envVars.PREFIX = process.env.PREFIX || '/data/data/com.termux/files/usr';
+            envVars.LD_LIBRARY_PATH = process.env.LD_LIBRARY_PATH || '/data/data/com.termux/files/usr/lib';
+        }
+
+        console.log(`[${MODULE_NAME}] Spawning terminal #${id}: shell=${shell}, cwd=${safeCwd}`);
+
+        const proc = _termSpawn(shell, [], {
+            cwd: safeCwd,
+            env: envVars,
             stdio: ['pipe', 'pipe', 'pipe'],
-            detached: true,
         });
 
-        const term = { id, proc, buffer: [], clients: [], cwd: cwd || getSafeRoot(), alive: true };
+        const term = {
+            id,
+            proc,
+            buffer: [],
+            clients: [],
+            cwd: safeCwd,
+            alive: true,
+            initialized: false,
+        };
 
         const push = (data) => {
             const text = data.toString('utf-8');
             term.buffer.push(text);
+            // Trim buffer
             if (term.buffer.length > 5000) term.buffer = term.buffer.slice(-3000);
+            // Send to SSE clients
             for (const c of term.clients) {
-                try { c.write(`data: ${JSON.stringify({ type: 'output', data: text })}\n\n`); } catch (e) {}
+                try {
+                    c.write(`data: ${JSON.stringify({ type: 'output', data: text })}\n\n`);
+                } catch (e) { /* client disconnected */ }
             }
         };
 
-        proc.stdout.on('data', push);
-        proc.stderr.on('data', push);
-        proc.on('exit', (code, signal) => {
-            term.alive = false;
-            const msg = `\r\n[프로세스 종료: code=${code}, signal=${signal}]\r\n`;
-            term.buffer.push(msg);
-            for (const c of term.clients) {
-                try { c.write(`data: ${JSON.stringify({ type: 'exit', code, signal, data: msg })}\n\n`); } catch (e) {}
-            }
-        });
+        if (proc.stdout) {
+            proc.stdout.on('data', (chunk) => {
+                push(chunk);
+            });
+        }
+        if (proc.stderr) {
+            proc.stderr.on('data', (chunk) => {
+                push(chunk);
+            });
+        }
+
         proc.on('error', (err) => {
+            console.error(`[${MODULE_NAME}] Terminal #${id} error: ${err.message}`);
             term.alive = false;
             const msg = `\r\n[오류: ${err.message}]\r\n`;
-            term.buffer.push(msg);
+            push(msg);
             for (const c of term.clients) {
                 try { c.write(`data: ${JSON.stringify({ type: 'error', data: msg })}\n\n`); } catch (e) {}
             }
         });
 
+        proc.on('exit', (code, signal) => {
+            console.log(`[${MODULE_NAME}] Terminal #${id} exited: code=${code}, signal=${signal}`);
+            term.alive = false;
+            const msg = `\r\n[프로세스 종료: code=${code}, signal=${signal || 'none'}]\r\n`;
+            term.buffer.push(msg);
+            for (const c of term.clients) {
+                try { c.write(`data: ${JSON.stringify({ type: 'exit', code, signal, data: msg })}\n\n`); } catch (e) {}
+            }
+        });
+
+        // Force shell initialization - send commands that produce visible output
+        setTimeout(() => {
+            if (proc && term.alive && proc.stdin.writable) {
+                // Set prompt and show initial info
+                const initCmds = [
+                    'export PS1="$ "',
+                    'echo "=== 터미널 #' + id + ' 연결됨 ==="',
+                    'echo "셸: ' + shell + '"',
+                    'echo "경로: $(pwd)"',
+                    'echo "---"',
+                    '',
+                ].join('\n') + '\n';
+                proc.stdin.write(initCmds);
+            }
+        }, 200);
+
         _terminals[id] = term;
-        console.log(`[${MODULE_NAME}] Terminal #${id} created (cwd: ${term.cwd})`);
         return term;
     }
 
+    // Spawn
     router.post('/terminal/spawn', express.json(), (req, res) => {
         try {
             const term = _createTerminal(req.body.cwd || '');
             res.json({ id: term.id, alive: true });
-        } catch (e) { res.status(500).json({ error: e.message }); }
+        } catch (e) {
+            console.error(`[${MODULE_NAME}] Terminal spawn error:`, e);
+            res.status(500).json({ error: e.message });
+        }
     });
 
+    // List
     router.get('/terminal/list', (_req, res) => {
-        res.json({ terminals: Object.values(_terminals).map(t => ({ id: t.id, alive: t.alive, cwd: t.cwd })) });
+        res.json({
+            terminals: Object.values(_terminals).map(t => ({
+                id: t.id, alive: t.alive, cwd: t.cwd
+            }))
+        });
     });
 
+    // Input — write to stdin
     router.post('/terminal/input', express.json(), (req, res) => {
         const term = _terminals[req.body.id];
-        if (!term?.alive) return res.json({ error: '터미널 없음' });
-        term.proc.stdin.write(req.body.data);
+        if (!term) return res.status(404).json({ error: '터미널 없음' });
+        if (!term.alive) return res.json({ error: '터미널 종료됨' });
+        try {
+            if (!term.proc.stdin.writable) {
+                return res.json({ error: 'stdin이 쓸 수 없는 상태' });
+            }
+            term.proc.stdin.write(req.body.data);
+            res.json({ ok: true });
+        } catch (e) {
+            res.json({ error: '입력 실패: ' + e.message });
+        }
+    });
+
+    // Execute a command and return result directly
+    // This is the primary execution mode — tracks cwd per session
+    const _termSessions = {}; // sessionId -> { cwd }
+
+    router.post('/terminal/exec', express.json(), (req, res) => {
+        const cmd = req.body.command || '';
+        const sessionId = String(req.body.sessionId || 'default');
+        const homeDir = process.env.HOME || '/data/data/com.termux/files/home';
+
+        // Init session if needed
+        if (!_termSessions[sessionId]) {
+            _termSessions[sessionId] = { cwd: homeDir };
+        }
+        const session = _termSessions[sessionId];
+
+        // If explicit cwd override is provided, use it
+        if (req.body.cwd) {
+            try {
+                const resolved = path.resolve(req.body.cwd);
+                if (fs.existsSync(resolved) && fs.statSync(resolved).isDirectory()) {
+                    session.cwd = resolved;
+                }
+            } catch (e) {}
+        }
+
+        // Ensure cwd exists, fallback to home
+        if (!session.cwd || !fs.existsSync(session.cwd)) {
+            session.cwd = homeDir;
+        }
+
+        if (!cmd.trim()) return res.json({ output: '', code: 0, cwd: session.cwd });
+
+        console.log(`[${MODULE_NAME}] exec [session=${sessionId}] cwd=${session.cwd} cmd=${cmd.substring(0, 100)}`);
+
+        try {
+            const { execSync: _es } = require('child_process');
+            const trimCmd = cmd.trim();
+
+            // Handle pure cd command
+            const cdMatch = trimCmd.match(/^cd(?:\s+(.*))?$/);
+            if (cdMatch) {
+                let target = (cdMatch[1] || '').trim().replace(/^["']|["']$/g, '');
+                if (!target || target === '~') target = homeDir;
+                else if (target === '-') target = session.prevCwd || homeDir;
+                else if (target === '..') target = path.dirname(session.cwd);
+                else if (target.startsWith('~/')) target = path.join(homeDir, target.slice(2));
+                
+                if (!path.isAbsolute(target)) target = path.resolve(session.cwd, target);
+
+                try {
+                    const resolved = path.resolve(target);
+                    if (fs.existsSync(resolved) && fs.statSync(resolved).isDirectory()) {
+                        session.prevCwd = session.cwd;
+                        session.cwd = resolved;
+                        console.log(`[${MODULE_NAME}] cd -> ${session.cwd}`);
+                        res.json({ output: '', code: 0, cwd: session.cwd });
+                    } else {
+                        res.json({ output: `-bash: cd: ${target}: No such file or directory\n`, code: 1, cwd: session.cwd });
+                    }
+                } catch (cdErr) {
+                    res.json({ output: `-bash: cd: ${cdErr.message}\n`, code: 1, cwd: session.cwd });
+                }
+                return;
+            }
+
+            // For "cd xxx && yyy" chains, handle cd first then run the rest
+            let effectiveCmd = cmd;
+            const cdChainMatch = trimCmd.match(/^cd\s+([^&;]+?)\s*(?:&&|;)\s*([\s\S]*)/);
+            if (cdChainMatch) {
+                let target = cdChainMatch[1].trim().replace(/^["']|["']$/g, '');
+                if (!target || target === '~') target = homeDir;
+                else if (target.startsWith('~/')) target = path.join(homeDir, target.slice(2));
+                if (!path.isAbsolute(target)) target = path.resolve(session.cwd, target);
+                try {
+                    const resolved = path.resolve(target);
+                    if (fs.existsSync(resolved) && fs.statSync(resolved).isDirectory()) {
+                        session.prevCwd = session.cwd;
+                        session.cwd = resolved;
+                    }
+                } catch (e) {}
+                effectiveCmd = cdChainMatch[2];
+            }
+
+            // Execute the command in the session's cwd
+            // Force cd to session.cwd before running to guarantee correct directory
+            let output;
+            const wrappedCmd = `cd "${session.cwd}" && ${effectiveCmd}`;
+            try {
+                output = _es(wrappedCmd, {
+                    cwd: session.cwd,
+                    encoding: 'utf-8',
+                    timeout: 60000,
+                    env: {
+                        ...process.env,
+                        HOME: homeDir,
+                        TERM: 'dumb',
+                    },
+                    shell: true,
+                    maxBuffer: 10 * 1024 * 1024,
+                });
+                res.json({ output: output || '', code: 0, cwd: session.cwd });
+            } catch (e) {
+                const errOutput = (e.stdout || '') + (e.stderr || '');
+                res.json({ output: errOutput || e.message, code: e.status || 1, cwd: session.cwd });
+            }
+        } catch (e) {
+            res.json({ output: 'Error: ' + e.message + '\n', code: 1, cwd: session.cwd });
+        }
+    });
+
+    // Reset session cwd
+    router.post('/terminal/reset-session', express.json(), (req, res) => {
+        const sessionId = req.body.sessionId || 'default';
+        delete _termSessions[sessionId];
         res.json({ ok: true });
     });
 
+    // Signal
     router.post('/terminal/signal', express.json(), (req, res) => {
         const term = _terminals[req.body.id];
         if (!term?.alive) return res.json({ error: '터미널 없음' });
         const sig = req.body.signal || 'SIGINT';
-        try { process.kill(-term.proc.pid, sig); } catch (e) {
+        try {
+            // Try process group
+            process.kill(-term.proc.pid, sig);
+        } catch (e) {
             try { term.proc.kill(sig); } catch (e2) {}
         }
         res.json({ ok: true, signal: sig });
     });
 
+    // Kill
     router.post('/terminal/kill', express.json(), (req, res) => {
         const term = _terminals[req.body.id];
         if (term) {
+            try { process.kill(-term.proc.pid, 'SIGKILL'); } catch (e) {}
             try { term.proc.kill('SIGKILL'); } catch (e) {}
             term.alive = false;
-            if (term.eventSource) try { term.eventSource.close(); } catch (e) {}
             delete _terminals[req.body.id];
         }
         res.json({ ok: true });
     });
 
+    // SSE stream
     router.get('/terminal/stream', (req, res) => {
         const id = req.query.id;
         const term = _terminals[id];
@@ -720,17 +984,24 @@ function init(app) {
             'X-Accel-Buffering': 'no',
         });
 
-        // 기존 버퍼 전송
+        // Send existing buffer as history
         if (term.buffer.length > 0) {
-            res.write(`data: ${JSON.stringify({ type: 'history', data: term.buffer.join('') })}\n\n`);
+            const history = term.buffer.join('');
+            res.write(`data: ${JSON.stringify({ type: 'history', data: history })}\n\n`);
         }
+
         if (!term.alive) {
             res.write(`data: ${JSON.stringify({ type: 'exit', code: null, data: '[이미 종료된 세션]' })}\n\n`);
         }
 
         term.clients.push(res);
-        req.on('close', () => { term.clients = term.clients.filter(c => c !== res); });
 
+        // Cleanup on disconnect
+        req.on('close', () => {
+            term.clients = term.clients.filter(c => c !== res);
+        });
+
+        // Keep-alive ping
         const ping = setInterval(() => {
             try { res.write(': ping\n\n'); } catch (e) { clearInterval(ping); }
         }, 15000);
