@@ -6,1799 +6,430 @@
 <title>Termux File Manager</title>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Noto+Sans+KR:wght@400;500;700&display=swap');
-
 * { margin: 0; padding: 0; box-sizing: border-box; }
-
 :root {
-    --bg-deep: #0a0e17;
-    --bg-panel: #111827;
-    --bg-card: #1a2236;
-    --bg-hover: #243049;
-    --accent: #22d3ee;
-    --accent-dim: #0e7490;
-    --accent-glow: rgba(34,211,238,0.15);
-    --green: #34d399;
-    --red: #f87171;
-    --orange: #fbbf24;
-    --text: #e2e8f0;
-    --text-dim: #94a3b8;
-    --border: #1e293b;
-    --radius: 10px;
+    --bg-deep: #0a0e17; --bg-panel: #111827; --bg-card: #1a2236;
+    --bg-hover: #243049; --accent: #22d3ee; --accent-dim: #0e7490;
+    --accent-glow: rgba(34,211,238,0.15); --green: #34d399; --red: #f87171;
+    --orange: #fbbf24; --text: #e2e8f0; --text-dim: #94a3b8;
+    --border: #1e293b; --radius: 10px;
 }
-
-html, body {
-    height: 100%;
-    font-family: 'Noto Sans KR', sans-serif;
-    background: var(--bg-deep);
-    color: var(--text);
-    overflow: hidden;
-}
-
-/* ===== LAYOUT ===== */
-.app {
-    display: flex;
-    flex-direction: column;
-    height: 100vh;
-}
-
-/* ===== HEADER ===== */
-.header {
-    background: var(--bg-panel);
-    border-bottom: 1px solid var(--border);
-    padding: 12px 20px;
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    flex-shrink: 0;
-}
-.header .logo {
-    font-family: 'JetBrains Mono', monospace;
-    font-weight: 700;
-    font-size: 18px;
-    color: var(--accent);
-    letter-spacing: -0.5px;
-}
-.header .logo span { color: var(--text-dim); font-weight: 400; }
-
-/* ===== TOOLBAR ===== */
-.toolbar {
-    background: var(--bg-panel);
-    border-bottom: 1px solid var(--border);
-    padding: 8px 20px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex-shrink: 0;
-    flex-wrap: wrap;
-}
-.breadcrumb {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 13px;
-    color: var(--text-dim);
-    flex: 1;
-    min-width: 200px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-.breadcrumb span {
-    cursor: pointer;
-    color: var(--accent);
-    transition: 0.2s;
-}
+html, body { height: 100%; font-family: 'Noto Sans KR', sans-serif; background: var(--bg-deep); color: var(--text); overflow: hidden; }
+.app { display: flex; flex-direction: column; height: 100vh; }
+.header { background: var(--bg-panel); border-bottom: 1px solid var(--border); padding: 10px 20px; display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.header .logo { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 18px; color: var(--accent); }
+.header .logo span { color: var(--text-dim); font-weight: 400; font-size: 13px; }
+.toolbar { background: var(--bg-panel); border-bottom: 1px solid var(--border); padding: 6px 20px; display: flex; align-items: center; gap: 6px; flex-shrink: 0; flex-wrap: wrap; }
+.toolbar-hidden { display: none !important; }
+.breadcrumb { font-family: 'JetBrains Mono', monospace; font-size: 13px; color: var(--text-dim); flex: 1; min-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.breadcrumb span { cursor: pointer; color: var(--accent); transition: 0.2s; }
 .breadcrumb span:hover { text-decoration: underline; }
 .breadcrumb .sep { color: var(--text-dim); cursor: default; margin: 0 2px; }
-
-.btn {
-    font-family: 'Noto Sans KR', sans-serif;
-    font-size: 13px;
-    font-weight: 500;
-    padding: 6px 14px;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    background: var(--bg-card);
-    color: var(--text);
-    cursor: pointer;
-    transition: all 0.2s;
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    white-space: nowrap;
-}
+.btn { font-family: 'Noto Sans KR', sans-serif; font-size: 12px; font-weight: 500; padding: 5px 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-card); color: var(--text); cursor: pointer; transition: all 0.2s; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
 .btn:hover { background: var(--bg-hover); border-color: var(--accent-dim); }
 .btn.primary { background: var(--accent-dim); border-color: var(--accent); color: #fff; }
-.btn.primary:hover { background: var(--accent); color: var(--bg-deep); }
+.btn.primary:hover { background: var(--accent); }
 .btn.danger { border-color: #7f1d1d; color: var(--red); }
-.btn.danger:hover { background: #7f1d1d; color: #fff; }
-.btn .icon { font-size: 16px; }
-
-/* ===== FILE LIST ===== */
-.file-area {
-    flex: 1;
-    overflow-y: auto;
-    padding: 12px 20px;
-}
-
-.file-list {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-}
-
-.file-item {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 10px 14px;
-    border-radius: var(--radius);
-    cursor: pointer;
-    transition: all 0.15s;
-    border: 1px solid transparent;
-}
-.file-item:hover {
-    background: var(--bg-card);
-    border-color: var(--border);
-}
-.file-item.selected {
-    background: var(--accent-glow);
-    border-color: var(--accent-dim);
-}
-
-.file-icon {
-    width: 36px;
-    height: 36px;
-    border-radius: 8px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 18px;
-    flex-shrink: 0;
-}
-.file-icon.folder { background: rgba(251,191,36,0.15); color: var(--orange); }
-.file-icon.file { background: rgba(148,163,184,0.1); color: var(--text-dim); }
-.file-icon.archive { background: rgba(34,211,238,0.1); color: var(--accent); }
-.file-icon.image { background: rgba(52,211,153,0.1); color: var(--green); }
-.file-icon.code { background: rgba(248,113,113,0.1); color: var(--red); }
-
+.btn.danger:hover { background: #7f1d1d33; }
+.btn.small { padding: 3px 8px; font-size: 11px; }
+.sub-toolbar { background: var(--bg-deep); border-bottom: 1px solid var(--border); padding: 6px 20px; display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.sub-toolbar.hidden { display: none !important; }
+.search-input { font-family: 'JetBrains Mono', monospace; font-size: 12px; padding: 5px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-card); color: var(--text); flex: 1; max-width: 300px; outline: none; }
+.search-input:focus { border-color: var(--accent); }
+.search-input::placeholder { color: var(--text-dim); }
+.sort-select { font-size: 11px; padding: 4px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-card); color: var(--text); cursor: pointer; outline: none; }
+.toggle-label { font-size: 11px; color: var(--text-dim); display: flex; align-items: center; gap: 4px; cursor: pointer; }
+.toggle-label input { accent-color: var(--accent); }
+.selection-bar { background: var(--accent-dim); padding: 6px 20px; display: flex; align-items: center; gap: 10px; flex-shrink: 0; font-size: 13px; color: #fff; }
+.selection-bar.hidden { display: none !important; }
+.fav-bar { background: var(--bg-panel); border-bottom: 1px solid var(--border); padding: 4px 20px; display: flex; align-items: center; gap: 4px; flex-shrink: 0; overflow-x: auto; }
+.fav-bar.hidden { display: none !important; }
+.fav-chip { font-size: 11px; padding: 3px 10px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg-card); color: var(--accent); cursor: pointer; white-space: nowrap; display: flex; align-items: center; gap: 4px; }
+.fav-chip:hover { background: var(--bg-hover); }
+.fav-chip .fav-remove { color: var(--text-dim); font-size: 10px; cursor: pointer; }
+.fav-chip .fav-remove:hover { color: var(--red); }
+.file-area { flex: 1; overflow-y: auto; padding: 8px 20px; }
+.file-area-hidden { display: none !important; }
+.file-list { display: flex; flex-direction: column; }
+.file-item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: var(--radius); cursor: pointer; transition: background 0.15s; border: 1px solid transparent; }
+.file-item:hover { background: var(--bg-card); }
+.file-item.selected { background: var(--accent-glow); border-color: var(--accent-dim); }
+.file-item .check-box { width: 16px; height: 16px; border: 1.5px solid var(--border); border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 10px; flex-shrink: 0; }
+.file-item.selected .check-box { background: var(--accent); border-color: var(--accent); color: #000; }
+.file-icon { font-size: 18px; width: 28px; text-align: center; flex-shrink: 0; }
 .file-info { flex: 1; min-width: 0; }
-.file-name {
-    font-size: 14px;
-    font-weight: 500;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-.file-meta {
-    font-size: 11px;
-    color: var(--text-dim);
-    font-family: 'JetBrains Mono', monospace;
-    margin-top: 2px;
-}
-
-/* ===== MODAL ===== */
-.modal-overlay {
-    position: fixed;
-    inset: 0;
-    background: rgba(0,0,0,0.7);
-    backdrop-filter: blur(4px);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 1000;
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.2s;
-}
-.modal-overlay.active { opacity: 1; pointer-events: all; }
-
-.modal {
-    background: var(--bg-panel);
-    border: 1px solid var(--border);
-    border-radius: 14px;
-    padding: 24px;
-    width: 90%;
-    max-width: 460px;
-    max-height: 80vh;
-    overflow-y: auto;
-    transform: translateY(20px);
-    transition: transform 0.2s;
-}
-.modal-overlay.active .modal { transform: translateY(0); }
-.modal h3 {
-    font-size: 16px;
-    font-weight: 700;
-    margin-bottom: 16px;
-    color: var(--accent);
-}
-.modal input[type="text"] {
-    width: 100%;
-    padding: 10px 14px;
-    background: var(--bg-deep);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    color: var(--text);
-    font-size: 14px;
-    font-family: 'JetBrains Mono', monospace;
-    margin-bottom: 12px;
-    outline: none;
-}
-.modal input[type="text"]:focus { border-color: var(--accent); }
-.modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
-
-/* ===== UPLOAD ZONE ===== */
-.upload-zone {
-    border: 2px dashed var(--border);
-    border-radius: var(--radius);
-    padding: 40px 20px;
-    text-align: center;
-    color: var(--text-dim);
-    transition: all 0.2s;
-    cursor: pointer;
-    margin-bottom: 12px;
-}
-.upload-zone:hover, .upload-zone.dragover {
-    border-color: var(--accent);
-    background: var(--accent-glow);
-    color: var(--accent);
-}
-.upload-zone .big-icon { font-size: 40px; margin-bottom: 8px; }
-.upload-zone p { font-size: 14px; }
-
-.upload-list { font-size: 13px; color: var(--text-dim); margin-bottom: 8px; }
-.upload-list div { padding: 4px 0; }
-
-/* ===== TOAST ===== */
-.toast-container {
-    position: fixed;
-    bottom: 20px;
-    right: 20px;
-    z-index: 2000;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-.toast {
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 10px 16px;
-    font-size: 13px;
-    color: var(--text);
-    animation: toastIn 0.3s ease;
-    max-width: 320px;
-}
-.toast.success { border-color: var(--green); color: var(--green); }
-.toast.error { border-color: var(--red); color: var(--red); }
-
-@keyframes toastIn {
-    from { opacity: 0; transform: translateX(30px); }
-    to { opacity: 1; transform: translateX(0); }
-}
-
-/* ===== CONTEXT MENU ===== */
-.context-menu {
-    position: fixed;
-    background: var(--bg-panel);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 4px;
-    min-width: 160px;
-    z-index: 1500;
-    display: none;
-}
+.file-name { font-size: 13px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-meta { font-size: 11px; color: var(--text-dim); }
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 1000; display: none; align-items: center; justify-content: center; padding: 20px; }
+.modal-overlay.active { display: flex; }
+.modal { background: var(--bg-panel); border: 1px solid var(--border); border-radius: 14px; padding: 24px; max-width: 700px; width: 100%; max-height: 85vh; overflow-y: auto; }
+.modal h3 { margin-bottom: 16px; font-size: 16px; }
+.modal input[type="text"], .modal textarea { width: 100%; font-family: 'JetBrains Mono', monospace; font-size: 13px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-card); color: var(--text); margin-bottom: 12px; outline: none; resize: vertical; }
+.modal input:focus, .modal textarea:focus { border-color: var(--accent); }
+.modal-actions { display: flex; gap: 8px; margin-top: 16px; justify-content: flex-end; }
+.upload-zone { border: 2px dashed var(--border); border-radius: var(--radius); padding: 30px; text-align: center; margin-bottom: 12px; transition: 0.3s; color: var(--text-dim); }
+.upload-zone.dragover { border-color: var(--accent); background: var(--accent-glow); }
+.upload-zone .big-icon { font-size: 36px; margin-bottom: 8px; }
+.editor-textarea { width: 100%; min-height: 400px; font-family: 'JetBrains Mono', monospace; font-size: 13px; line-height: 1.6; padding: 12px; border: 1px solid var(--border); border-radius: 8px; background: #0d1117; color: #e6edf3; resize: vertical; tab-size: 4; outline: none; }
+.editor-textarea:focus { border-color: var(--accent); }
+.editor-info { font-size: 11px; color: var(--text-dim); margin-bottom: 8px; }
+.image-preview-container { display: flex; justify-content: center; align-items: center; background: #000; border-radius: 8px; padding: 16px; margin-bottom: 12px; max-height: 60vh; overflow: hidden; }
+.image-preview-container img { max-width: 100%; max-height: 55vh; object-fit: contain; border-radius: 4px; }
+.toast-container { position: fixed; bottom: 16px; right: 16px; z-index: 2000; display: flex; flex-direction: column; gap: 6px; }
+.toast { background: var(--bg-card); border: 1px solid var(--accent); border-radius: 8px; padding: 10px 16px; font-size: 13px; animation: toastIn 0.3s ease; max-width: 350px; }
+.toast.error { border-color: var(--red); }
+@keyframes toastIn { from { opacity: 0; transform: translateX(30px); } to { opacity: 1; transform: translateX(0); } }
+.context-menu { position: fixed; background: var(--bg-panel); border: 1px solid var(--border); border-radius: 10px; padding: 6px 0; min-width: 180px; z-index: 1500; box-shadow: 0 8px 24px rgba(0,0,0,0.5); display: none; }
 .context-menu.active { display: block; }
-.context-menu-item {
-    padding: 8px 14px;
-    font-size: 13px;
-    cursor: pointer;
-    border-radius: 6px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
+.context-menu-item { padding: 8px 16px; font-size: 13px; cursor: pointer; transition: 0.15s; }
 .context-menu-item:hover { background: var(--bg-hover); }
 .context-menu-item.danger { color: var(--red); }
-
-/* ===== LOADING ===== */
-.loading {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 60px;
-    color: var(--text-dim);
-    gap: 10px;
-}
-.spinner {
-    width: 20px; height: 20px;
-    border: 2px solid var(--border);
-    border-top-color: var(--accent);
-    border-radius: 50%;
-    animation: spin 0.6s linear infinite;
-}
+.context-menu-sep { border-top: 1px solid var(--border); margin: 4px 0; }
+.loading { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 40px; color: var(--text-dim); }
+.spinner { width: 20px; height: 20px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.6s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
-
-/* ===== PREVIEW ===== */
-.preview-content {
-    background: var(--bg-deep);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 14px;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 12px;
-    line-height: 1.6;
-    max-height: 300px;
-    overflow-y: auto;
-    white-space: pre-wrap;
-    word-break: break-all;
-    color: var(--text-dim);
-}
-
-/* ===== UPLOAD PROGRESS ===== */
-.progress-overlay {
-    position: fixed;
-    inset: 0;
-    background: rgba(0,0,0,0.8);
-    backdrop-filter: blur(6px);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 3000;
-}
-.progress-box {
-    background: var(--bg-panel);
-    border: 1px solid var(--border);
-    border-radius: 14px;
-    padding: 28px 32px;
-    width: 90%;
-    max-width: 400px;
-    text-align: center;
-}
-.progress-box h3 { color: var(--accent); margin-bottom: 16px; font-size: 16px; }
-.progress-bar-track {
-    width: 100%;
-    height: 12px;
-    background: var(--bg-deep);
-    border-radius: 6px;
-    overflow: hidden;
-    margin-bottom: 12px;
-}
-.progress-bar-fill {
-    height: 100%;
-    background: linear-gradient(90deg, var(--accent-dim), var(--accent));
-    border-radius: 6px;
-    transition: width 0.3s ease;
-    width: 0%;
-}
-.progress-stats {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 13px;
-    color: var(--text-dim);
-    margin-bottom: 6px;
-}
-.progress-filename {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 11px;
-    color: var(--text-dim);
-    opacity: 0.7;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    margin-top: 8px;
-}
-.progress-speed {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 12px;
-    color: var(--accent);
-    margin-top: 6px;
-}
-
-/* ===== TERMINAL ===== */
-.terminal-view {
-    display: none;
-    flex-direction: column;
-    flex: 1;
-    overflow: hidden;
-    background: #0d1117;
-}
-.terminal-view.active {
-    display: flex;
-}
-.term-toolbar {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 8px 16px;
-    background: #161b22;
-    border-bottom: 1px solid var(--border);
-    flex-shrink: 0;
-    flex-wrap: wrap;
-}
-.term-tabs {
-    display: flex;
-    gap: 2px;
-    overflow-x: auto;
-    flex-shrink: 0;
-}
-.term-tab {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 12px;
-    padding: 4px 12px;
-    background: #0d1117;
-    color: #8b949e;
-    border: 1px solid transparent;
-    border-radius: 6px 6px 0 0;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    white-space: nowrap;
-    transition: all 0.15s;
-}
-.term-tab:hover { color: #c9d1d9; }
-.term-tab.active { background: #0d1117; color: #58a6ff; border-color: var(--border); border-bottom-color: #0d1117; }
-.term-tab .tab-close { font-size: 14px; opacity: 0.4; cursor: pointer; line-height: 1; }
-.term-tab .tab-close:hover { opacity: 1; color: var(--red); }
-.term-tab-add {
-    font-size: 16px; color: #8b949e; cursor: pointer; padding: 0 6px; line-height: 1;
-}
-.term-tab-add:hover { color: var(--green); }
-
-.term-actions {
-    margin-left: auto;
-    display: flex;
-    gap: 4px;
-    align-items: center;
-}
-.term-btn {
-    font-family: 'Noto Sans KR', sans-serif;
-    font-size: 12px;
-    padding: 4px 10px;
-    border: 1px solid #30363d;
-    background: #161b22;
-    color: #c9d1d9;
-    cursor: pointer;
-    border-radius: 5px;
-    transition: all 0.15s;
-    white-space: nowrap;
-}
-.term-btn:hover { background: #21262d; border-color: #8b949e; }
-.term-btn.ctrl-c { border-color: #da3633; color: #f85149; }
-.term-btn.ctrl-c:hover { background: #da363322; }
-.term-btn.kill { border-color: #f8514944; color: #f85149; }
-.term-btn.kill:hover { background: #f8514922; }
-
-.term-output {
-    flex: 1;
-    overflow-y: auto;
-    padding: 10px 16px;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 12.5px;
-    line-height: 1.6;
-    color: #c9d1d9;
-    white-space: pre-wrap;
-    word-break: break-all;
-    background: #0d1117;
-    user-select: text;
-}
-.term-output::-webkit-scrollbar { width: 6px; }
-.term-output::-webkit-scrollbar-track { background: #0d1117; }
-.term-output::-webkit-scrollbar-thumb { background: #30363d; border-radius: 3px; }
-
-.term-quick-bar {
-    display: flex;
-    gap: 4px;
-    padding: 6px 16px;
-    background: #161b22;
-    border-top: 1px solid #21262d;
-    flex-shrink: 0;
-    flex-wrap: wrap;
-}
-.term-quick {
-    font-size: 11px;
-    padding: 3px 10px;
-    border: 1px solid #30363d;
-    background: #0d1117;
-    color: #bc8cff;
-    cursor: pointer;
-    border-radius: 4px;
-    transition: all 0.12s;
-}
+.preview-content { background: #0d1117; border: 1px solid var(--border); border-radius: 8px; padding: 12px; font-family: 'JetBrains Mono', monospace; font-size: 12px; line-height: 1.6; white-space: pre-wrap; word-wrap: break-word; max-height: 50vh; overflow-y: auto; color: #c9d1d9; }
+.progress-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 1500; display: flex; align-items: center; justify-content: center; }
+.progress-box { background: var(--bg-panel); border: 1px solid var(--border); border-radius: 14px; padding: 30px; min-width: 350px; max-width: 500px; text-align: center; }
+.progress-bar-track { height: 8px; background: var(--bg-card); border-radius: 4px; margin: 16px 0 8px; overflow: hidden; }
+.progress-bar-fill { height: 100%; background: linear-gradient(90deg, var(--accent-dim), var(--accent)); border-radius: 4px; transition: width 0.3s; width: 0%; }
+.terminal-view { display: none; flex-direction: column; flex: 1; overflow: hidden; background: #0d1117; }
+.terminal-view.active { display: flex; }
+.term-toolbar { display: flex; align-items: center; gap: 6px; padding: 6px 12px; background: #161b22; border-bottom: 1px solid #21262d; flex-shrink: 0; }
+.term-tabs { display: flex; gap: 2px; flex: 1; overflow-x: auto; }
+.term-tab { font-family: 'JetBrains Mono', monospace; font-size: 11px; padding: 4px 10px; background: #0d1117; border: 1px solid #21262d; border-radius: 6px 6px 0 0; color: #8b949e; cursor: pointer; white-space: nowrap; display: flex; align-items: center; gap: 4px; }
+.term-tab.active { background: #161b22; color: #e6edf3; border-bottom-color: transparent; }
+.tab-close { font-size: 12px; opacity: 0.5; cursor: pointer; }
+.tab-close:hover { opacity: 1; color: var(--red); }
+.term-tab-add { font-size: 14px; padding: 2px 8px; cursor: pointer; color: #8b949e; border-radius: 4px; }
+.term-tab-add:hover { color: var(--accent); background: #21262d; }
+.term-actions { display: flex; gap: 4px; }
+.term-btn { font-size: 11px; padding: 3px 8px; border: 1px solid #30363d; background: #0d1117; color: #8b949e; border-radius: 4px; cursor: pointer; }
+.term-btn:hover { color: #e6edf3; border-color: #484f58; }
+.term-btn.ctrl-c:hover { color: var(--orange); border-color: var(--orange); }
+.term-btn.kill:hover { color: var(--red); border-color: var(--red); }
+.term-output { flex: 1; overflow-y: auto; padding: 12px; font-family: 'JetBrains Mono', monospace; font-size: 13px; line-height: 1.5; white-space: pre-wrap; word-break: break-all; color: #e6edf3; }
+.term-quick-bar { display: flex; gap: 4px; padding: 6px 12px; background: #161b22; border-top: 1px solid #21262d; flex-shrink: 0; overflow-x: auto; }
+.term-quick { font-size: 11px; padding: 3px 10px; border: 1px solid #30363d; background: #0d1117; color: #bc8cff; cursor: pointer; border-radius: 4px; white-space: nowrap; }
 .term-quick:hover { background: #161b22; border-color: #bc8cff; }
-
-.term-input-bar {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 8px 16px;
-    background: #161b22;
-    border-top: 1px solid #21262d;
-    flex-shrink: 0;
-}
-.term-prompt {
-    color: var(--green);
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 13px;
-    flex-shrink: 0;
-    user-select: none;
-}
-.term-input {
-    flex: 1;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 13px;
-    padding: 7px 10px;
-    border: 1px solid #30363d;
-    background: #0d1117;
-    color: #c9d1d9;
-    border-radius: 5px;
-    outline: none;
-}
-.term-input:focus { border-color: #58a6ff; }
-.term-input::placeholder { color: #484f58; }
-.term-send {
-    font-family: 'Noto Sans KR', sans-serif;
-    font-size: 12px;
-    padding: 7px 14px;
-    border: 1px solid #58a6ff44;
-    background: #58a6ff22;
-    color: #58a6ff;
-    cursor: pointer;
-    border-radius: 5px;
-}
-.term-send:hover { background: #58a6ff44; }
-
-.term-status-bar {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 4px 16px;
-    background: #010409;
-    font-size: 11px;
-    color: #484f58;
-    flex-shrink: 0;
-    border-top: 1px solid #21262d;
-    font-family: 'JetBrains Mono', monospace;
-}
-.term-dot { width: 6px; height: 6px; border-radius: 50%; background: #f85149; flex-shrink: 0; }
-.term-dot.alive { background: #3fb950; }
-
-/* hide file area when terminal active */
-.file-area-hidden { display: none !important; }
-.toolbar-hidden { display: none !important; }
-
-/* ===== RESPONSIVE ===== */
-@media (max-width: 600px) {
-    .toolbar { padding: 8px 12px; }
-    .file-area { padding: 8px 12px; }
-    .header { padding: 10px 12px; }
-    .btn { padding: 6px 10px; font-size: 12px; }
-}
+.term-input-bar { display: flex; gap: 6px; padding: 8px 12px; background: #0d1117; border-top: 1px solid #21262d; flex-shrink: 0; }
+.term-prompt { font-family: 'JetBrains Mono', monospace; color: var(--green); font-size: 13px; line-height: 30px; }
+.term-input { flex: 1; font-family: 'JetBrains Mono', monospace; font-size: 13px; padding: 6px 10px; background: #161b22; border: 1px solid #30363d; border-radius: 6px; color: #e6edf3; outline: none; }
+.term-input:focus { border-color: var(--accent); }
+.term-send { font-size: 12px; padding: 6px 14px; background: var(--accent-dim); color: white; border: none; border-radius: 6px; cursor: pointer; }
+.term-send:hover { background: var(--accent); }
+.term-status-bar { display: flex; align-items: center; gap: 6px; padding: 4px 12px; background: #161b22; font-size: 11px; color: #8b949e; border-top: 1px solid #21262d; flex-shrink: 0; }
+.term-dot { width: 8px; height: 8px; border-radius: 50%; background: #484f58; flex-shrink: 0; }
+.term-dot.alive { background: var(--green); }
+.search-results { border-top: 1px solid var(--border); padding: 6px 20px 4px; font-size: 12px; color: var(--accent); background: var(--bg-deep); }
+@media (max-width: 600px) { .header { padding: 8px 12px; } .toolbar { padding: 5px 12px; } .file-area { padding: 6px 12px; } .btn { padding: 4px 8px; font-size: 11px; } .file-item .check-box { display: none; } }
 </style>
 </head>
 <body>
-
 <div class="app" id="app">
-    <!-- HEADER -->
     <div class="header">
-        <div class="logo">📂 TermuxFM <span>for SillyTavern</span></div>
+        <div class="logo">📂 TermuxFM <span>v2</span></div>
         <div style="flex:1"></div>
         <button class="btn" onclick="toggleTerminal()" id="termToggleBtn">🖥 터미널</button>
         <button class="btn" onclick="window.open(getLibraryUrl(), '_blank')">📚 도서관</button>
         <button class="btn primary" onclick="backupST()">💾 백업</button>
-        <button class="btn" onclick="showSettingsModal()">⚙️ 설정</button>
+        <button class="btn" onclick="showSettingsModal()">⚙️</button>
     </div>
-
-    <!-- TOOLBAR -->
-    <div class="toolbar">
-        <button class="btn" onclick="goUp()">⬆ 상위</button>
-        <button class="btn" onclick="goHome()">🏠 홈</button>
-        <button class="btn" onclick="goStorage()">💾 내부저장소</button>
-        <button class="btn" onclick="goSDCard()">📀 SD카드</button>
-        <button class="btn" onclick="showUploadModal()">📤 업로드</button>
-        <button class="btn" onclick="showMkdirModal()">📁 새 폴더</button>
-        <button class="btn" onclick="pasteHere()" title="복사한 파일 붙여넣기">📋 붙여넣기</button>
+    <div class="fav-bar hidden" id="favBar"></div>
+    <div class="toolbar" id="mainToolbar">
+        <button class="btn" onclick="goUp()">⬆</button>
+        <button class="btn" onclick="goHome()">🏠</button>
+        <button class="btn" onclick="goStorage()">💾 저장소</button>
+        <button class="btn" onclick="goSDCard()">📀 SD</button>
+        <button class="btn" onclick="showUploadModal()">📤</button>
+        <button class="btn" onclick="showMkdirModal()">📁+</button>
+        <button class="btn" onclick="pasteHere()">📋</button>
+        <button class="btn" onclick="addFavorite()">⭐</button>
         <div class="breadcrumb" id="breadcrumb">~</div>
     </div>
-
-    <!-- FILE AREA -->
-    <div class="file-area" id="fileArea">
-        <div class="loading"><div class="spinner"></div> 불러오는 중...</div>
+    <div class="sub-toolbar" id="subToolbar">
+        <input type="text" class="search-input" id="searchInput" placeholder="🔍 파일 검색..." oninput="onSearchInput(this.value)">
+        <select class="sort-select" id="sortSelect" onchange="onSortChange()">
+            <option value="name-asc">이름↑</option><option value="name-desc">이름↓</option>
+            <option value="size-desc">크기↓</option><option value="size-asc">크기↑</option>
+            <option value="date-desc">최신순</option><option value="date-asc">오래된순</option>
+        </select>
+        <label class="toggle-label"><input type="checkbox" id="showHidden" onchange="onToggleHidden()"> 숨김</label>
     </div>
-
-    <!-- TERMINAL -->
+    <div class="selection-bar hidden" id="selectionBar">
+        <span id="selectionCount">0개 선택</span>
+        <button class="btn small danger" onclick="batchDelete()">🗑 일괄 삭제</button>
+        <button class="btn small" onclick="clearSelection()">✕ 해제</button>
+    </div>
+    <div class="search-results hidden" id="searchResultsBar"></div>
+    <div class="file-area" id="fileArea"><div class="loading"><div class="spinner"></div> 불러오는 중...</div></div>
     <div class="terminal-view" id="terminalView">
-        <div class="term-toolbar">
-            <div class="term-tabs" id="termTabs"></div>
-            <span class="term-tab-add" onclick="termNewTab()" title="새 터미널">＋</span>
-            <div class="term-actions">
-                <button class="term-btn ctrl-c" onclick="termSignal('SIGINT')" title="Ctrl+C (SIGINT)">⌃C</button>
-                <button class="term-btn kill" onclick="termKillCurrent()" title="세션 종료">✕ 종료</button>
-                <button class="term-btn" onclick="termClearScreen()" title="화면 지우기">🗑</button>
-            </div>
-        </div>
+        <div class="term-toolbar"><div class="term-tabs" id="termTabs"></div><span class="term-tab-add" onclick="termNewTab()">＋</span><div class="term-actions"><button class="term-btn ctrl-c" onclick="termSignal('SIGINT')">⌃C</button><button class="term-btn kill" onclick="termKillCurrent()">✕</button><button class="term-btn" onclick="termClearScreen()">🗑</button></div></div>
         <div class="term-output" id="termOutput"></div>
         <div class="term-quick-bar">
-            <span class="term-quick" onclick="termQuick('cd ~/SillyTavern && ./start.sh')">▶ ST 시작</span>
-            <span class="term-quick" onclick="termSignal('SIGINT')">⌃C 중지</span>
-            <span class="term-quick" onclick="termQuick('cd ~/SillyTavern && git pull && npm install')">⬇ ST 업데이트</span>
-            <span class="term-quick" onclick="termQuick('ls -la')">ls -la</span>
+            <span class="term-quick" onclick="termQuick('cd ~/SillyTavern && ./start.sh')">▶ ST시작</span>
+            <span class="term-quick" onclick="termSignal('SIGINT')">⌃C</span>
+            <span class="term-quick" onclick="termQuick('cd ~/SillyTavern && git pull && npm install')">⬇ ST업뎃</span>
+            <span class="term-quick" onclick="termQuick('ls -la')">ls</span>
             <span class="term-quick" onclick="termQuick('ps aux | grep node')">프로세스</span>
             <span class="term-quick" onclick="termQuick('free -h && df -h')">시스템</span>
-            <span class="term-quick" onclick="termQuick('cat ~/SillyTavern/config.yaml')">ST config</span>
-            <span class="term-quick" onclick="termQuick('tail -50 ~/SillyTavern/backups/*.log 2>/dev/null || echo No logs')">ST 로그</span>
         </div>
-        <div class="term-input-bar">
-            <span class="term-prompt">$</span>
-            <input type="text" class="term-input" id="termInput" placeholder="명령어 입력..." autocomplete="off" spellcheck="false">
-            <button class="term-send" onclick="termSendInput()">전송</button>
-        </div>
-        <div class="term-status-bar">
-            <span class="term-dot" id="termDot"></span>
-            <span id="termStatusText">연결 안 됨</span>
-        </div>
+        <div class="term-input-bar"><span class="term-prompt">$</span><input type="text" class="term-input" id="termInput" placeholder="명령어 입력..." autocomplete="off" spellcheck="false"><button class="term-send" onclick="termSendInput()">전송</button></div>
+        <div class="term-status-bar"><span class="term-dot" id="termDot"></span><span id="termStatusText">연결 안 됨</span></div>
     </div>
 </div>
-
-<!-- CONTEXT MENU -->
 <div class="context-menu" id="contextMenu">
     <div class="context-menu-item" onclick="downloadSelected()">📥 다운로드</div>
-    <div class="context-menu-item" id="ctxDownloadZip" onclick="downloadFolderZip()" style="display:none">📦 폴더 압축 다운로드</div>
+    <div class="context-menu-item" id="ctxDownloadZip" style="display:none" onclick="downloadFolderZip()">📦 폴더 압축</div>
     <div class="context-menu-item" onclick="previewSelected()">👁 미리보기</div>
+    <div class="context-menu-item" onclick="editSelected()">✏️ 편집</div>
+    <div class="context-menu-sep"></div>
     <div class="context-menu-item" onclick="copySelected()">📋 복사</div>
-    <div class="context-menu-item" onclick="renameSelected()">✏️ 이름 변경</div>
+    <div class="context-menu-item" onclick="renameSelected()">✏️ 이름변경</div>
+    <div class="context-menu-item" onclick="showFileInfo()">ℹ️ 정보</div>
+    <div class="context-menu-sep"></div>
     <div class="context-menu-item danger" onclick="deleteSelected()">🗑 삭제</div>
 </div>
-
-<!-- MODAL OVERLAY -->
-<div class="modal-overlay" id="modalOverlay" onclick="closeModalOutside(event)">
-    <div class="modal" id="modalContent"></div>
-</div>
-
-<!-- TOAST -->
+<div class="modal-overlay" id="modalOverlay" onclick="closeModalOutside(event)"><div class="modal" id="modalContent"></div></div>
 <div class="toast-container" id="toastContainer"></div>
-
 <script>
-// ===== CONFIG =====
 const API_BASE = window.location.origin + '/api/plugins/termux-file-manager';
-let currentPath = '';
-let fileItems = [];
-let selectedItem = null;
+let currentPath = '', fileItems = [], allItems = [];
+let selectedItems = new Set(), lastSelectedIdx = -1;
+let currentSort = 'name-asc', showHiddenFiles = false, isSearchMode = false, searchTimeout = null;
 
-// ===== API HELPERS =====
-async function api(endpoint, body = {}) {
-    const res = await fetch(API_BASE + endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-    });
-    if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: res.statusText }));
-        throw new Error(err.error || 'Unknown error');
-    }
+async function api(ep, body={}) {
+    const res = await fetch(API_BASE+ep, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
+    if (!res.ok) { const e = await res.json().catch(()=>({})); throw new Error(e.error||'Request failed'); }
     return res;
 }
-
-// ===== TOAST =====
-function toast(msg, type = 'success') {
-    const el = document.createElement('div');
-    el.className = `toast ${type}`;
-    el.textContent = msg;
-    document.getElementById('toastContainer').appendChild(el);
-    setTimeout(() => el.remove(), 3500);
-}
+function toast(msg, type='success') { const el=document.createElement('div'); el.className=`toast ${type}`; el.textContent=msg; document.getElementById('toastContainer').appendChild(el); setTimeout(()=>el.remove(),3000); }
+function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function formatSize(b) { if(!b)return'—'; if(b<1024)return b+' B'; if(b<1048576)return(b/1024).toFixed(1)+' KB'; if(b<1073741824)return(b/1048576).toFixed(1)+' MB'; return(b/1073741824).toFixed(2)+' GB'; }
 
 // ===== FILE LISTING =====
-async function loadDir(dirPath = '') {
-    currentPath = dirPath;
-    selectedItem = null;
-    const area = document.getElementById('fileArea');
-    area.innerHTML = '<div class="loading"><div class="spinner"></div> 불러오는 중...</div>';
-
+async function loadDir(dirPath='') {
+    currentPath=dirPath; isSearchMode=false;
+    document.getElementById('searchInput').value='';
+    document.getElementById('searchResultsBar').classList.add('hidden');
+    clearSelection();
+    const area=document.getElementById('fileArea');
+    area.innerHTML='<div class="loading"><div class="spinner"></div> 불러오는 중...</div>';
     try {
-        const res = await api('/list', { path: dirPath });
-        const data = await res.json();
-        fileItems = data.items;
-        renderBreadcrumb(data.currentPath);
-        renderFiles(fileItems);
-    } catch (err) {
-        area.innerHTML = `<div class="loading" style="color:var(--red)">❌ ${err.message}</div>`;
-    }
+        const res=await api('/list',{path:dirPath}); const data=await res.json();
+        renderBreadcrumb(data.currentPath); allItems=data.items; applyFilterAndSort();
+    } catch(err) { area.innerHTML=`<div class="loading" style="color:var(--red)">❌ ${err.message}</div>`; }
 }
+function applyFilterAndSort() {
+    let items=[...allItems];
+    if(!showHiddenFiles) items=items.filter(i=>!i.name.startsWith('.'));
+    const [sk,sd]=currentSort.split('-');
+    items.sort((a,b)=>{
+        if(a.isDirectory&&!b.isDirectory)return -1; if(!a.isDirectory&&b.isDirectory)return 1;
+        let c=0; if(sk==='name')c=a.name.localeCompare(b.name); else if(sk==='size')c=a.size-b.size; else if(sk==='date')c=(a.mtime||'').localeCompare(b.mtime||'');
+        return sd==='desc'?-c:c;
+    });
+    fileItems=items; renderFiles(items);
+}
+function onSortChange() { currentSort=document.getElementById('sortSelect').value; if(!isSearchMode) applyFilterAndSort(); }
+function onToggleHidden() { showHiddenFiles=document.getElementById('showHidden').checked; if(!isSearchMode) applyFilterAndSort(); }
 
 function renderBreadcrumb(pathStr) {
-    const bc = document.getElementById('breadcrumb');
-    const isAbsolute = pathStr.startsWith('/');
-    const parts = pathStr.split('/').filter(Boolean);
-    let html = `<span onclick="goHome()">~</span>`;
-
-    if (isAbsolute) {
-        // Absolute path like /storage/emulated/0/...
-        html = '';
-        let accumulated = '';
-        for (const part of parts) {
-            accumulated += '/' + part;
-            const p = accumulated;
-            html += (html ? '<span class="sep">/</span>' : '') + `<span onclick="loadDir('${p}')">${part}</span>`;
-        }
-        html = `<span onclick="goHome()">~</span><span class="sep"> | </span>` + html;
+    const bc=document.getElementById('breadcrumb'); let html='';
+    if(pathStr.startsWith('/storage')) {
+        const parts=pathStr.split('/').filter(Boolean); let p='';
+        for(const part of parts){p+='/'+part; html+=`<span class="sep">/</span><span onclick="loadDir('${p}')">${part}</span>`;}
+        html=`<span onclick="goHome()">~</span>`+html;
     } else {
-        let accumulated = '';
-        for (const part of parts) {
-            if (part === '~') continue;
-            accumulated += (accumulated ? '/' : '') + part;
-            const p = accumulated;
-            html += `<span class="sep">/</span><span onclick="loadDir('${p}')">${part}</span>`;
-        }
+        const parts=pathStr.split('/').filter(Boolean); html=`<span onclick="goHome()">~</span>`; let p='';
+        for(const part of parts){ if(part==='~')continue; p+=(p?'/':'')+part; html+=`<span class="sep">/</span><span onclick="loadDir('${p}')">${part}</span>`; }
     }
-    bc.innerHTML = html;
+    bc.innerHTML=html;
 }
-
 function getFileIcon(item) {
-    if (item.isDirectory) return { cls: 'folder', icon: '📁' };
-    const ext = item.name.split('.').pop().toLowerCase();
-    if (['tar','gz','zip','7z','rar','bz2'].includes(ext)) return { cls: 'archive', icon: '📦' };
-    if (['png','jpg','jpeg','gif','webp','svg','bmp'].includes(ext)) return { cls: 'image', icon: '🖼' };
-    if (['js','ts','py','json','yaml','yml','html','css','sh','md','jsx','vue'].includes(ext)) return { cls: 'code', icon: '📝' };
-    return { cls: 'file', icon: '📄' };
+    if(item.isDirectory) return {cls:'folder',icon:'📁'};
+    const ext=item.name.split('.').pop().toLowerCase();
+    if(['tar','gz','zip','7z','rar','bz2','xz'].includes(ext)) return {cls:'archive',icon:'📦'};
+    if(['png','jpg','jpeg','gif','webp','svg','bmp','ico'].includes(ext)) return {cls:'image',icon:'🖼'};
+    if(['js','ts','py','json','yaml','yml','html','css','sh','md','jsx','vue','c','cpp','rs','go'].includes(ext)) return {cls:'code',icon:'📝'};
+    if(['mp3','wav','ogg','flac','m4a'].includes(ext)) return {cls:'file',icon:'🎵'};
+    if(['mp4','mkv','avi','mov','webm'].includes(ext)) return {cls:'file',icon:'🎬'};
+    return {cls:'file',icon:'📄'};
 }
-
-function formatSize(bytes) {
-    if (bytes === 0) return '—';
-    if (bytes < 1024) return bytes + ' B';
-    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-    if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
-    return (bytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
-}
-
 function renderFiles(items) {
-    const area = document.getElementById('fileArea');
-    if (items.length === 0) {
-        area.innerHTML = '<div class="loading">📭 빈 폴더입니다</div>';
-        return;
+    const area=document.getElementById('fileArea');
+    if(!items.length){ area.innerHTML='<div class="loading">📭 빈 폴더</div>'; return; }
+    let html='<div class="file-list">';
+    for(let i=0;i<items.length;i++){
+        const item=items[i], ico=getFileIcon(item);
+        const date=item.mtime?new Date(item.mtime).toLocaleString('ko-KR',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}):'';
+        const sel=selectedItems.has(i)?' selected':'';
+        const meta=item.isDirectory?'폴더'+(item.childCount!=null?' · '+item.childCount+'개':''):formatSize(item.size);
+        const pathInfo=(isSearchMode&&item.path)?`<span style="color:var(--accent);font-size:10px"> ${escHtml(item.path)}</span>`:'';
+        html+=`<div class="file-item${sel}" data-index="${i}" onclick="selectItem(${i},event)" ondblclick="openItem(${i})" oncontextmenu="showContext(event,${i})"><div class="check-box">${sel?'✓':''}</div><div class="file-icon ${ico.cls}">${ico.icon}</div><div class="file-info"><div class="file-name">${escHtml(item.name)}${pathInfo}</div><div class="file-meta">${meta}${date?' · '+date:''}</div></div></div>`;
     }
-    let html = '<div class="file-list">';
-    for (let i = 0; i < items.length; i++) {
-        const item = items[i];
-        const ico = getFileIcon(item);
-        const date = item.mtime ? new Date(item.mtime).toLocaleString('ko-KR', { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' }) : '';
-        html += `
-        <div class="file-item" data-index="${i}"
-             onclick="selectItem(${i}, event)"
-             ondblclick="openItem(${i})"
-             oncontextmenu="showContext(event, ${i})">
-            <div class="file-icon ${ico.cls}">${ico.icon}</div>
-            <div class="file-info">
-                <div class="file-name">${escHtml(item.name)}</div>
-                <div class="file-meta">${item.isDirectory ? '폴더' + (item.childCount != null ? ' · ' + item.childCount + '개 항목' : '') : formatSize(item.size)}${date ? ' · ' + date : ''}</div>
-            </div>
-        </div>`;
-    }
-    html += '</div>';
-    area.innerHTML = html;
+    html+='</div>'; area.innerHTML=html;
 }
 
-function escHtml(s) {
-    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+// ===== SELECTION =====
+function selectItem(idx,ev) {
+    if(ev)ev.stopPropagation();
+    if(ev&&ev.shiftKey&&lastSelectedIdx>=0){ const s=Math.min(lastSelectedIdx,idx),e=Math.max(lastSelectedIdx,idx); for(let i=s;i<=e;i++)selectedItems.add(i); }
+    else if(ev&&(ev.ctrlKey||ev.metaKey)){ if(selectedItems.has(idx))selectedItems.delete(idx); else selectedItems.add(idx); }
+    else { selectedItems.clear(); selectedItems.add(idx); }
+    lastSelectedIdx=idx; updateSelectionUI();
 }
-
-// ===== SELECTION & NAVIGATION =====
-function selectItem(idx, ev) {
-    if (ev) ev.stopPropagation();
-    selectedItem = fileItems[idx];
-    document.querySelectorAll('.file-item').forEach(el => el.classList.remove('selected'));
-    document.querySelector(`.file-item[data-index="${idx}"]`)?.classList.add('selected');
+function clearSelection(){ selectedItems.clear(); lastSelectedIdx=-1; updateSelectionUI(); }
+function updateSelectionUI(){
+    document.querySelectorAll('.file-item').forEach(el=>{ const i=parseInt(el.dataset.index),s=selectedItems.has(i); el.classList.toggle('selected',s); const cb=el.querySelector('.check-box'); if(cb)cb.textContent=s?'✓':''; });
+    const bar=document.getElementById('selectionBar');
+    if(selectedItems.size>1){ bar.classList.remove('hidden'); document.getElementById('selectionCount').textContent=selectedItems.size+'개 선택'; }
+    else bar.classList.add('hidden');
+}
+function getFirstSelected(){ if(!selectedItems.size)return null; return fileItems[[...selectedItems][0]]; }
+function getItemPath(item){
+    if(isSearchMode&&item.fullPath){ const h='/data/data/com.termux/files/home'; if(item.fullPath.startsWith('/storage'))return item.fullPath; return item.fullPath.replace(h+'/','').replace(h,''); }
+    return currentPath?currentPath+'/'+item.name:item.name;
 }
 
 function openItem(idx) {
-    const item = fileItems[idx];
-    if (item.isDirectory) {
-        const newPath = currentPath ? currentPath + '/' + item.name : item.name;
-        loadDir(newPath);
-    } else {
-        // Try to preview text files, download others
-        const ext = item.name.split('.').pop().toLowerCase();
-        const textExts = ['txt','json','yaml','yml','js','ts','py','html','css','md','sh','log','cfg','conf','jsx','vue','xml','csv','toml','ini','env'];
-        if (textExts.includes(ext)) {
-            selectedItem = item;
-            previewSelected();
-        } else {
-            selectedItem = item;
-            downloadSelected();
-        }
-    }
+    const item=fileItems[idx];
+    if(item.isDirectory){ if(isSearchMode&&item.fullPath)loadDir(item.fullPath); else loadDir(currentPath?currentPath+'/'+item.name:item.name); return; }
+    const ext=item.name.split('.').pop().toLowerCase();
+    const textExts=['txt','json','yaml','yml','js','ts','py','html','css','md','sh','log','cfg','conf','jsx','vue','xml','csv','toml','ini','env','mjs','cjs'];
+    const imgExts=['png','jpg','jpeg','gif','webp','svg','bmp','ico'];
+    selectedItems.clear(); selectedItems.add(idx);
+    if(textExts.includes(ext)) editSelected();
+    else if(imgExts.includes(ext)) previewImage();
+    else downloadSelected();
+}
+function goUp(){ if(!currentPath||currentPath==='~')return; if(currentPath.startsWith('/storage')){const p=currentPath.split('/');p.pop();const par=p.join('/');loadDir(par.startsWith('/storage')?par:'');return;} const p=currentPath.split('/');p.pop();loadDir(p.join('/')); }
+function goHome(){loadDir('')}
+function goStorage(){loadDir('/storage/emulated/0')}
+async function goSDCard(){
+    try{ const res=await api('/list',{path:'/storage'}); const data=await res.json();
+    const sd=data.items.filter(i=>i.isDirectory&&i.name!=='emulated'&&i.name!=='self'&&!i.name.startsWith('.'));
+    if(sd.length===1)loadDir('/storage/'+sd[0].name); else if(sd.length>1){let h='<h3>📀 SD카드</h3>'; for(const s of sd)h+=`<button class="btn" style="width:100%;margin-bottom:8px" onclick="loadDir('/storage/${s.name}');closeModal()">📀 ${s.name}</button>`; h+='<div class="modal-actions"><button class="btn" onclick="closeModal()">취소</button></div>'; showModal(h);} else{loadDir('/storage');toast('SD카드 없음','error');}
+    }catch(e){toast('저장소 접근 실패','error');}
 }
 
-function goUp() {
-    if (!currentPath || currentPath === '~') return;
-    // For /storage paths
-    if (currentPath.startsWith('/storage')) {
-        const parts = currentPath.split('/');
-        parts.pop();
-        const parent = parts.join('/');
-        if (parent === '/storage' || parent.startsWith('/storage')) {
-            loadDir(parent);
-        } else {
-            loadDir(''); // go home
-        }
-        return;
-    }
-    const parts = currentPath.split('/');
-    parts.pop();
-    loadDir(parts.join('/'));
-}
-
-function goHome() { loadDir(''); }
-
-function goStorage() { loadDir('/storage/emulated/0'); }
-
-async function goSDCard() {
-    // Try to find SD card by listing /storage
-    try {
-        const res = await api('/list', { path: '/storage' });
-        const data = await res.json();
-        const sdItems = data.items.filter(i =>
-            i.isDirectory &&
-            i.name !== 'emulated' &&
-            i.name !== 'self' &&
-            !i.name.startsWith('.')
-        );
-        if (sdItems.length === 1) {
-            loadDir('/storage/' + sdItems[0].name);
-        } else if (sdItems.length > 1) {
-            // Show selection
-            let html = '<h3>📀 SD카드 선택</h3>';
-            for (const sd of sdItems) {
-                html += `<button class="btn" style="width:100%;margin-bottom:8px;justify-content:center" onclick="loadDir('/storage/${sd.name}'); closeModal()">📀 ${sd.name}</button>`;
-            }
-            html += '<div class="modal-actions"><button class="btn" onclick="closeModal()">취소</button></div>';
-            showModal(html);
-        } else {
-            // No SD card found, just go to /storage
-            loadDir('/storage');
-            toast('SD카드를 찾을 수 없습니다. /storage를 표시합니다.', 'error');
-        }
-    } catch (err) {
-        toast('저장소 접근 실패. termux-setup-storage를 먼저 실행하세요.', 'error');
-    }
-}
-
-function getItemPath(item) {
-    return currentPath ? currentPath + '/' + item.name : item.name;
-}
+// ===== SEARCH =====
+function onSearchInput(v){ clearTimeout(searchTimeout); const q=v.trim(); if(!q){isSearchMode=false;document.getElementById('searchResultsBar').classList.add('hidden');applyFilterAndSort();return;} searchTimeout=setTimeout(()=>doSearch(q),300); }
+async function doSearch(q){ try{ const res=await api('/search',{path:currentPath,query:q}); const data=await res.json(); isSearchMode=true; fileItems=data.results; document.getElementById('searchResultsBar').classList.remove('hidden'); document.getElementById('searchResultsBar').textContent=`🔍 "${q}" → ${data.results.length}개`; renderFiles(fileItems); }catch(e){toast('검색 실패','error');} }
 
 // ===== CONTEXT MENU =====
-function showContext(ev, idx) {
-    ev.preventDefault();
-    ev.stopPropagation();
-    selectItem(idx, ev);
-    const menu = document.getElementById('contextMenu');
-    menu.style.left = Math.min(ev.clientX, window.innerWidth - 180) + 'px';
-    menu.style.top = Math.min(ev.clientY, window.innerHeight - 200) + 'px';
-    // Show/hide folder zip download option
-    const zipItem = document.getElementById('ctxDownloadZip');
-    zipItem.style.display = (selectedItem && selectedItem.isDirectory) ? '' : 'none';
-    menu.classList.add('active');
-}
-
-document.addEventListener('click', () => {
-    document.getElementById('contextMenu').classList.remove('active');
-});
+function showContext(ev,idx){ ev.preventDefault(); ev.stopPropagation(); if(!selectedItems.has(idx)){selectedItems.clear();selectedItems.add(idx);lastSelectedIdx=idx;updateSelectionUI();} const m=document.getElementById('contextMenu'); m.style.left=Math.min(ev.clientX,innerWidth-190)+'px'; m.style.top=Math.min(ev.clientY,innerHeight-250)+'px'; document.getElementById('ctxDownloadZip').style.display=fileItems[idx]?.isDirectory?'':'none'; m.classList.add('active'); }
+document.addEventListener('click',()=>document.getElementById('contextMenu').classList.remove('active'));
 
 // ===== ACTIONS =====
-async function downloadSelected() {
-    if (!selectedItem) return toast('파일 또는 폴더를 선택해주세요', 'error');
-    if (selectedItem.isDirectory) return downloadFolderZip();
-    const filePath = getItemPath(selectedItem);
-    try {
-        const res = await fetch(API_BASE + '/download', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ path: filePath }),
-        });
-        const blob = await res.blob();
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = selectedItem.name;
-        a.click();
-        URL.revokeObjectURL(url);
-        toast('다운로드 완료: ' + selectedItem.name);
-    } catch (err) {
-        toast('다운로드 실패: ' + err.message, 'error');
-    }
-}
+async function downloadSelected(){ const item=getFirstSelected(); if(!item)return toast('선택 없음','error'); if(item.isDirectory)return downloadFolderZip(); try{ const res=await fetch(API_BASE+'/download',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:getItemPath(item)})}); const blob=await res.blob(); const u=URL.createObjectURL(blob); const a=document.createElement('a');a.href=u;a.download=item.name;a.click();URL.revokeObjectURL(u); toast('다운로드: '+item.name); }catch(e){toast('실패: '+e.message,'error');} }
+async function downloadFolderZip(){ const item=getFirstSelected(); if(!item?.isDirectory)return; toast('📦 압축 중...'); try{ const res=await fetch(API_BASE+'/download-zip',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:getItemPath(item)})}); if(!res.ok)throw new Error((await res.json().catch(()=>({}))).error||'fail'); const blob=await res.blob(); const u=URL.createObjectURL(blob); const a=document.createElement('a');a.href=u;a.download=item.name+'.tar.gz';a.click();URL.revokeObjectURL(u); toast('📦 완료: '+item.name+'.tar.gz'); }catch(e){toast('실패: '+e.message,'error');} }
 
-async function downloadFolderZip() {
-    if (!selectedItem || !selectedItem.isDirectory) return toast('폴더를 선택해주세요', 'error');
-    const folderPath = getItemPath(selectedItem);
-    const folderName = selectedItem.name;
-    toast('📦 폴더 압축 중... 잠시 기다려주세요');
+async function previewSelected(){ const item=getFirstSelected(); if(!item)return; const ext=item.name.split('.').pop().toLowerCase(); if(['png','jpg','jpeg','gif','webp','svg','bmp','ico'].includes(ext))return previewImage(); try{ const res=await api('/read',{path:getItemPath(item)}); const data=await res.json(); showModal(`<h3>📄 ${escHtml(item.name)} <span style="font-size:12px;color:var(--text-dim)">(${formatSize(data.size)})</span></h3><div class="preview-content">${escHtml(data.content)}</div><div class="modal-actions"><button class="btn" onclick="closeModal();editSelected()">✏️ 편집</button><button class="btn" onclick="closeModal()">닫기</button></div>`); }catch(e){toast('미리보기 실패','error');} }
 
-    try {
-        const res = await fetch(API_BASE + '/download-zip', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ path: folderPath }),
-        });
-        if (!res.ok) {
-            const err = await res.json().catch(() => ({ error: res.statusText }));
-            throw new Error(err.error || 'Download failed');
-        }
-        const blob = await res.blob();
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = folderName + '.tar.gz';
-        a.click();
-        URL.revokeObjectURL(url);
-        toast('📦 압축 다운로드 완료: ' + folderName + '.tar.gz');
-    } catch (err) {
-        toast('압축 다운로드 실패: ' + err.message, 'error');
-    }
-}
+function previewImage(){ const item=getFirstSelected(); if(!item)return; const url=API_BASE+'/preview-image?path='+encodeURIComponent(getItemPath(item)); showModal(`<h3>🖼 ${escHtml(item.name)}</h3><div class="image-preview-container"><img src="${url}" onerror="this.parentElement.innerHTML='<span style=color:var(--red)>로드 실패</span>'"></div><div class="modal-actions"><button class="btn" onclick="closeModal();downloadSelected()">📥 다운로드</button><button class="btn" onclick="closeModal()">닫기</button></div>`); }
 
-async function previewSelected() {
-    if (!selectedItem) return;
-    const filePath = getItemPath(selectedItem);
-    try {
-        const res = await api('/read', { path: filePath });
-        const data = await res.json();
-        showModal(`
-            <h3>📄 ${escHtml(selectedItem.name)}</h3>
-            <div class="preview-content">${escHtml(data.content)}</div>
-            <div class="modal-actions">
-                <button class="btn" onclick="closeModal()">닫기</button>
-            </div>
-        `);
-    } catch (err) {
-        toast('미리보기 실패: ' + err.message, 'error');
-    }
-}
+async function editSelected(){ const item=getFirstSelected(); if(!item||item.isDirectory)return toast('편집 불가','error'); const fp=getItemPath(item); try{ const res=await api('/read',{path:fp}); const data=await res.json(); showModal(`<h3>✏️ ${escHtml(item.name)}</h3><div class="editor-info">${escHtml(fp)} · ${formatSize(data.size)}</div><textarea class="editor-textarea" id="editorContent">${escHtml(data.content)}</textarea><div class="modal-actions"><button class="btn" onclick="closeModal()">취소</button><button class="btn primary" onclick="saveEditor('${escHtml(fp).replace(/'/g,"\\'")}')">💾 저장</button></div>`); const ta=document.getElementById('editorContent'); ta.addEventListener('keydown',e=>{if(e.key==='Tab'){e.preventDefault();const s=ta.selectionStart;ta.value=ta.value.substring(0,s)+'    '+ta.value.substring(ta.selectionEnd);ta.selectionStart=ta.selectionEnd=s+4;}if(e.key==='s'&&(e.ctrlKey||e.metaKey)){e.preventDefault();saveEditor(fp);}}); setTimeout(()=>ta.focus(),100); }catch(e){toast('열기 실패: '+e.message,'error');} }
+async function saveEditor(fp){ const c=document.getElementById('editorContent').value; try{const res=await api('/write',{path:fp,content:c});const d=await res.json();toast('저장 완료 ('+formatSize(d.size)+')');closeModal();if(!isSearchMode)loadDir(currentPath);}catch(e){toast('저장 실패: '+e.message,'error');} }
 
-async function deleteSelected() {
-    if (!selectedItem) return;
-    const name = selectedItem.name;
-    if (!confirm(`"${name}"을(를) 삭제하시겠습니까?`)) return;
-    try {
-        await api('/delete', { path: getItemPath(selectedItem) });
-        toast('삭제 완료: ' + name);
-        loadDir(currentPath);
-    } catch (err) {
-        toast('삭제 실패: ' + err.message, 'error');
-    }
-}
+async function showFileInfo(){ const item=getFirstSelected(); if(!item)return; try{ const res=await api('/info',{path:getItemPath(item)}); const info=await res.json(); showModal(`<h3>ℹ️ 상세 정보</h3><div style="font-family:'JetBrains Mono',monospace;font-size:12px;line-height:2"><div><b>이름:</b> ${escHtml(info.name)}</div><div><b>경로:</b> ${escHtml(info.path)}</div><div><b>타입:</b> ${info.isDirectory?'📁 디렉토리':'📄 파일'}${info.isSymlink?' → '+escHtml(info.linkTarget):''}</div><div><b>크기:</b> ${formatSize(info.size)} (${(info.size||0).toLocaleString()} bytes)</div><div><b>권한:</b> ${info.mode} (uid:${info.uid} gid:${info.gid})</div><div><b>수정:</b> ${new Date(info.mtime).toLocaleString('ko-KR')}</div><div><b>생성:</b> ${new Date(info.ctime).toLocaleString('ko-KR')}</div>${info.childCount!=null?`<div><b>하위:</b> ${info.childCount}개</div>`:''}</div><div class="modal-actions"><button class="btn" onclick="closeModal()">닫기</button></div>`); }catch(e){toast('정보 조회 실패','error');} }
 
-function renameSelected() {
-    if (!selectedItem) return;
-    const oldName = selectedItem.name;
-    showModal(`
-        <h3>✏️ 이름 변경</h3>
-        <input type="text" id="renameInput" value="${escHtml(oldName)}" />
-        <div class="modal-actions">
-            <button class="btn" onclick="closeModal()">취소</button>
-            <button class="btn primary" onclick="doRename('${escHtml(oldName)}')">변경</button>
-        </div>
-    `);
-    setTimeout(() => {
-        const inp = document.getElementById('renameInput');
-        inp?.focus();
-        inp?.select();
-    }, 100);
-}
+async function deleteSelected(){ const item=getFirstSelected(); if(!item||!confirm(`"${item.name}" 삭제?`))return; try{await api('/delete',{path:getItemPath(item)});toast('삭제: '+item.name);loadDir(currentPath);}catch(e){toast('삭제 실패','error');} }
+async function batchDelete(){ if(selectedItems.size<2)return; const paths=[...selectedItems].map(i=>getItemPath(fileItems[i])); if(!confirm(`${selectedItems.size}개 삭제?\n${paths.slice(0,5).join('\n')}${paths.length>5?'\n...외 '+(paths.length-5)+'개':''}`))return; try{const res=await api('/batch-delete',{paths});const d=await res.json();toast(`${d.deleted.length}개 삭제`+(d.errors.length?`, ${d.errors.length}개 실패`:''));clearSelection();loadDir(currentPath);}catch(e){toast('실패','error');} }
 
-async function doRename(oldName) {
-    const newName = document.getElementById('renameInput').value.trim();
-    if (!newName || newName === oldName) return closeModal();
-    const fromPath = currentPath ? currentPath + '/' + oldName : oldName;
-    const toPath = currentPath ? currentPath + '/' + newName : newName;
-    try {
-        await api('/move', { from: fromPath, to: toPath });
-        toast('이름 변경 완료');
-        closeModal();
-        loadDir(currentPath);
-    } catch (err) {
-        toast('이름 변경 실패: ' + err.message, 'error');
-    }
-}
+function renameSelected(){ const item=getFirstSelected(); if(!item)return; showModal(`<h3>✏️ 이름 변경</h3><input type="text" id="renameInput" value="${escHtml(item.name)}" /><div class="modal-actions"><button class="btn" onclick="closeModal()">취소</button><button class="btn primary" onclick="doRename('${escHtml(item.name).replace(/'/g,"\\'")}')">변경</button></div>`); setTimeout(()=>{const i=document.getElementById('renameInput');i?.focus();i?.select();},100); }
+async function doRename(old){ const n=document.getElementById('renameInput').value.trim(); if(!n||n===old)return closeModal(); try{await api('/move',{from:currentPath?currentPath+'/'+old:old,to:currentPath?currentPath+'/'+n:n});toast('변경 완료');closeModal();loadDir(currentPath);}catch(e){toast('실패: '+e.message,'error');} }
 
 // ===== UPLOAD =====
-function showUploadModal() {
-    showModal(`
-        <h3>📤 업로드</h3>
-        <div class="upload-zone" id="uploadZone"
-             ondragover="event.preventDefault(); this.classList.add('dragover')"
-             ondragleave="this.classList.remove('dragover')"
-             ondrop="handleDrop(event)">
-            <div class="big-icon">📤</div>
-            <p>파일 또는 폴더를 드래그하세요</p>
-        </div>
-        <div style="display:flex;gap:8px;margin-bottom:12px">
-            <button class="btn" style="flex:1" onclick="document.getElementById('fileInput').click()">📄 파일 선택</button>
-            <button class="btn" style="flex:1" onclick="document.getElementById('folderInput').click()">📁 폴더 선택</button>
-        </div>
-        <input type="file" id="fileInput" multiple style="display:none" onchange="handleFileInput(this.files)" />
-        <input type="file" id="folderInput" webkitdirectory style="display:none" onchange="handleFolderInput(this.files)" />
-        <div class="upload-list" id="uploadList"></div>
-        <div class="modal-actions">
-            <button class="btn" onclick="closeModal()">취소</button>
-            <button class="btn primary" id="uploadBtn" onclick="doUpload()" style="display:none">업로드</button>
-        </div>
-    `);
-}
+function showUploadModal(){ showModal(`<h3>📤 업로드</h3><div class="upload-zone" id="uploadZone" ondragover="event.preventDefault();this.classList.add('dragover')" ondragleave="this.classList.remove('dragover')" ondrop="handleDrop(event)"><div class="big-icon">📤</div><p>드래그 또는 아래 버튼</p></div><div style="display:flex;gap:8px;margin-bottom:12px"><button class="btn" style="flex:1" onclick="document.getElementById('fileInput').click()">📄 파일</button><button class="btn" style="flex:1" onclick="document.getElementById('folderInput').click()">📁 폴더</button></div><input type="file" id="fileInput" multiple style="display:none" onchange="handleFileInput(this.files)"><input type="file" id="folderInput" webkitdirectory style="display:none" onchange="handleFolderInput(this.files)"><div id="uploadList"></div><div class="modal-actions"><button class="btn" onclick="closeModal()">취소</button><button class="btn primary" id="uploadBtn" onclick="doUpload()" style="display:none">업로드</button></div>`); }
+let pendingUploads=[], failedUploads=[], lastUploadTargetPath='';
+function handleDrop(ev){ ev.preventDefault(); ev.currentTarget.classList.remove('dragover'); const items=ev.dataTransfer.items; if(items&&items.length>0&&items[0].webkitGetAsEntry){ const entries=[]; for(let i=0;i<items.length;i++){const e=items[i].webkitGetAsEntry();if(e)entries.push(e);} pendingUploads=[]; let processing=0; function readEntry(entry,prefix){if(entry.isFile){processing++;entry.file(f=>{pendingUploads.push({file:f,relativePath:prefix+f.name});processing--;if(!processing)renderUploadList();});}else if(entry.isDirectory){processing++;const reader=entry.createReader();function readAll(){reader.readEntries(children=>{if(children.length>0){for(const c of children)readEntry(c,prefix+entry.name+'/');readAll();}else{processing--;if(!processing)renderUploadList();}});}readAll();}} for(const e of entries)readEntry(e,''); setTimeout(()=>{if(pendingUploads.length>0)renderUploadList();},200); }else handleFileInput(ev.dataTransfer.files); }
+function handleFileInput(f){pendingUploads=Array.from(f).map(f=>({file:f,relativePath:f.name}));renderUploadList();}
+function handleFolderInput(f){pendingUploads=Array.from(f).map(f=>({file:f,relativePath:f.webkitRelativePath||f.name}));renderUploadList();}
+function renderUploadList(){ const list=document.getElementById('uploadList'); if(!list)return; const folders=new Set(); let fc=0; for(const u of pendingUploads){const p=u.relativePath.split('/');p.length>1?folders.add(p[0]+'/'):fc++;} let h=''; for(const f of folders)h+=`<div>📁 ${escHtml(f)} (${pendingUploads.filter(u=>u.relativePath.startsWith(f)).length}개)</div>`; if(fc>0){const singles=pendingUploads.filter(u=>!u.relativePath.includes('/')); for(const s of singles.slice(0,10))h+=`<div>📄 ${escHtml(s.file.name)} (${formatSize(s.file.size)})</div>`; if(singles.length>10)h+=`<div>...외 ${singles.length-10}개</div>`;} h+=`<div style="margin-top:6px;color:var(--accent);font-size:12px">총 ${pendingUploads.length}개</div>`; list.innerHTML=h; document.getElementById('uploadBtn').style.display=pendingUploads.length?'inline-flex':'none'; }
 
-// Each entry: { file: File, relativePath: string }
-let pendingUploads = [];
-
-function handleDrop(ev) {
-    ev.preventDefault();
-    ev.currentTarget.classList.remove('dragover');
-    // Use DataTransferItem API for folder support
-    const items = ev.dataTransfer.items;
-    if (items && items.length > 0 && items[0].webkitGetAsEntry) {
-        const entries = [];
-        for (let i = 0; i < items.length; i++) {
-            const entry = items[i].webkitGetAsEntry();
-            if (entry) entries.push(entry);
-        }
-        pendingUploads = [];
-        let processing = 0;
-        function readEntry(entry, pathPrefix) {
-            if (entry.isFile) {
-                processing++;
-                entry.file(file => {
-                    pendingUploads.push({ file, relativePath: pathPrefix + file.name });
-                    processing--;
-                    if (processing === 0) renderUploadList();
-                });
-            } else if (entry.isDirectory) {
-                processing++;
-                const reader = entry.createReader();
-                // readEntries returns max 100 per call, must loop until empty
-                function readAll() {
-                    reader.readEntries(children => {
-                        if (children.length > 0) {
-                            for (const child of children) {
-                                readEntry(child, pathPrefix + entry.name + '/');
-                            }
-                            readAll(); // keep reading until no more
-                        } else {
-                            processing--;
-                            if (processing === 0) renderUploadList();
-                        }
-                    });
-                }
-                readAll();
-            }
-        }
-        for (const entry of entries) readEntry(entry, '');
-        // Fallback: if no entries processed quickly, check after a tick
-        setTimeout(() => { if (pendingUploads.length > 0) renderUploadList(); }, 200);
-    } else {
-        // Fallback: plain file list
-        handleFileInput(ev.dataTransfer.files);
-    }
-}
-
-function handleFileInput(files) {
-    pendingUploads = Array.from(files).map(f => ({ file: f, relativePath: f.name }));
-    renderUploadList();
-}
-
-function handleFolderInput(files) {
-    // webkitRelativePath gives "folderName/sub/file.txt"
-    pendingUploads = Array.from(files).map(f => ({
-        file: f,
-        relativePath: f.webkitRelativePath || f.name
-    }));
-    renderUploadList();
-}
-
-function renderUploadList() {
-    const list = document.getElementById('uploadList');
-    if (!list) return;
-    // Group by top-level folder
-    const folders = new Set();
-    let fileCount = 0;
-    for (const u of pendingUploads) {
-        const parts = u.relativePath.split('/');
-        if (parts.length > 1) {
-            folders.add(parts[0] + '/');
-        } else {
-            fileCount++;
-        }
-    }
-    let html = '';
-    for (const folder of folders) {
-        const count = pendingUploads.filter(u => u.relativePath.startsWith(folder)).length;
-        html += `<div>📁 ${escHtml(folder)} (${count}개 파일)</div>`;
-    }
-    if (fileCount > 0) {
-        const singles = pendingUploads.filter(u => !u.relativePath.includes('/'));
-        for (const s of singles.slice(0, 10)) {
-            html += `<div>📄 ${escHtml(s.file.name)} (${formatSize(s.file.size)})</div>`;
-        }
-        if (singles.length > 10) html += `<div>... 외 ${singles.length - 10}개</div>`;
-    }
-    html += `<div style="margin-top:6px;color:var(--accent);font-size:12px">총 ${pendingUploads.length}개 파일</div>`;
-    list.innerHTML = html;
-    document.getElementById('uploadBtn').style.display = pendingUploads.length ? 'inline-flex' : 'none';
-}
-
-let failedUploads = []; // track failed files for retry
-let lastUploadTargetPath = '';
-
-async function doUpload() {
-    if (!pendingUploads.length) return;
-    closeModal();
-    lastUploadTargetPath = currentPath;
-
-    const total = pendingUploads.length;
-    let uploaded = 0;
-    let failed = 0;
-    failedUploads = [];
-    let totalBytes = pendingUploads.reduce((s, u) => s + u.file.size, 0);
-    let sentBytes = 0;
-    const startTime = Date.now();
-
-    // Show progress overlay
-    const overlay = document.createElement('div');
-    overlay.className = 'progress-overlay';
-    overlay.id = 'uploadOverlay';
-    overlay.innerHTML = `
-        <div class="progress-box">
-            <h3>📤 업로드 중...</h3>
-            <div class="progress-bar-track"><div class="progress-bar-fill" id="progFill"></div></div>
-            <div class="progress-stats" id="progStats">0 / ${total} 파일</div>
-            <div class="progress-speed" id="progSpeed"></div>
-            <div class="progress-filename" id="progFile">준비 중...</div>
-            <div id="progActions" style="margin-top:16px;display:none"></div>
-        </div>
-    `;
-    document.body.appendChild(overlay);
-
-    function updateProgress(currentFile) {
-        const pct = Math.round((uploaded / total) * 100);
-        document.getElementById('progFill').style.width = pct + '%';
-        document.getElementById('progStats').textContent = `${uploaded} / ${total} 파일 (${pct}%)`;
-        document.getElementById('progFile').textContent = currentFile || '';
-
-        const elapsed = (Date.now() - startTime) / 1000;
-        if (elapsed > 1 && sentBytes > 0) {
-            const speed = sentBytes / elapsed;
-            const remaining = ((totalBytes - sentBytes) / speed);
-            let speedStr = speed > 1048576 ? (speed / 1048576).toFixed(1) + ' MB/s' : (speed / 1024).toFixed(0) + ' KB/s';
-            let timeStr = remaining > 60 ? Math.ceil(remaining / 60) + '분' : Math.ceil(remaining) + '초';
-            document.getElementById('progSpeed').textContent = `${speedStr} · 약 ${timeStr} 남음`;
-        }
-    }
-
-    // Upload in chunks of 10 files
-    const CHUNK_SIZE = 10;
-    for (let i = 0; i < total; i += CHUNK_SIZE) {
-        const chunk = pendingUploads.slice(i, i + CHUNK_SIZE);
-        const firstName = chunk[0].relativePath;
-        updateProgress(chunk.length > 1 ? `${firstName} 외 ${chunk.length - 1}개` : firstName);
-
-        const form = new FormData();
-        form.append('targetPath', currentPath);
-        const paths = chunk.map(u => u.relativePath);
-        form.append('relativePaths', JSON.stringify(paths));
-        for (const u of chunk) {
-            form.append('files', u.file);
-        }
-
-        try {
-            const res = await fetch(API_BASE + '/upload', { method: 'POST', body: form });
-            const data = await res.json();
-            if (data.error) throw new Error(data.error);
-
-            // Check for partial failures
-            const serverErrors = data.errors || [];
-            const successCount = (data.uploaded || []).length;
-            const failCount = serverErrors.length;
-
-            uploaded += successCount;
-            sentBytes += chunk.filter((_, idx) => idx < successCount + failCount).reduce((s, u) => s + u.file.size, 0);
-
-            if (failCount > 0) {
-                failed += failCount;
-                // Match failed files back to chunk entries
-                const failedNames = new Set(serverErrors.map(e => e.name));
-                for (const c of chunk) {
-                    if (failedNames.has(c.relativePath)) {
-                        failedUploads.push(c);
-                    }
-                }
-                uploaded += failCount;
-            }
-        } catch (err) {
-            failed += chunk.length;
-            uploaded += chunk.length;
-            failedUploads.push(...chunk);
-        }
-        updateProgress('');
-    }
-
-    // Done
-    document.getElementById('progFill').style.width = '100%';
-    document.getElementById('progSpeed').textContent = '';
-
-    if (failed > 0) {
-        document.getElementById('progFill').style.background = 'linear-gradient(90deg, var(--accent-dim), var(--red))';
-        document.getElementById('progStats').textContent = `${total - failed}개 성공 / ${failed}개 실패`;
-        document.getElementById('progFile').textContent = '';
-
-        // Show failed file list + retry button
-        let failHtml = '<div style="text-align:left;max-height:150px;overflow-y:auto;margin-bottom:12px;font-size:12px;color:var(--red);font-family:JetBrains Mono,monospace">';
-        for (const f of failedUploads.slice(0, 20)) {
-            failHtml += `<div>❌ ${escHtml(f.relativePath)}</div>`;
-        }
-        if (failedUploads.length > 20) {
-            failHtml += `<div>... 외 ${failedUploads.length - 20}개</div>`;
-        }
-        failHtml += '</div>';
-        failHtml += '<div style="display:flex;gap:8px;justify-content:center">';
-        failHtml += '<button class="btn primary" onclick="retryFailed()">🔄 실패한 파일 재시도 (' + failed + '개)</button>';
-        failHtml += '<button class="btn" onclick="closeUploadOverlay()">닫기</button>';
-        failHtml += '</div>';
-
-        document.getElementById('progActions').style.display = 'block';
-        document.getElementById('progActions').innerHTML = failHtml;
-    } else {
-        document.getElementById('progStats').textContent = `✅ ${total}개 전부 업로드 완료!`;
-        document.getElementById('progFile').textContent = '';
-        setTimeout(() => {
-            closeUploadOverlay();
-            toast(`${total}개 파일 업로드 완료`);
-        }, 1200);
-    }
-
-    pendingUploads = [];
-    loadDir(currentPath);
-}
-
-function closeUploadOverlay() {
-    const overlay = document.getElementById('uploadOverlay');
-    if (overlay) overlay.remove();
-}
-
-async function retryFailed() {
-    if (!failedUploads.length) return;
-    // Move failed files back to pendingUploads and re-run
-    pendingUploads = [...failedUploads];
-    currentPath = lastUploadTargetPath;
-    closeUploadOverlay();
-    await doUpload();
-}
+async function doUpload(){ if(!pendingUploads.length)return; closeModal(); lastUploadTargetPath=currentPath; const total=pendingUploads.length; let uploaded=0,failed=0; failedUploads=[]; const startTime=Date.now(); let totalBytes=pendingUploads.reduce((s,u)=>s+u.file.size,0),sentBytes=0; const overlay=document.createElement('div'); overlay.className='progress-overlay'; overlay.id='uploadOverlay'; overlay.innerHTML=`<div class="progress-box"><h3>📤 업로드 중...</h3><div class="progress-bar-track"><div class="progress-bar-fill" id="progFill"></div></div><div id="progStats">0 / ${total}</div><div id="progSpeed" style="font-size:12px;color:var(--text-dim)"></div><div id="progActions" style="margin-top:16px;display:none"></div></div>`; document.body.appendChild(overlay);
+function updateProg(){ const pct=Math.round(uploaded/total*100); document.getElementById('progFill').style.width=pct+'%'; document.getElementById('progStats').textContent=`${uploaded}/${total} (${pct}%)`; }
+const CHUNK=10; for(let i=0;i<total;i+=CHUNK){ const chunk=pendingUploads.slice(i,i+CHUNK); const form=new FormData(); form.append('targetPath',currentPath); form.append('relativePaths',JSON.stringify(chunk.map(u=>u.relativePath))); for(const u of chunk)form.append('files',u.file); try{const res=await fetch(API_BASE+'/upload',{method:'POST',body:form}); const data=await res.json(); if(data.error)throw new Error(data.error); uploaded+=(data.uploaded||[]).length; sentBytes+=chunk.reduce((s,u)=>s+u.file.size,0); if(data.errors?.length){failed+=data.errors.length;uploaded+=data.errors.length;}}catch(e){failed+=chunk.length;uploaded+=chunk.length;failedUploads.push(...chunk);} updateProg();}
+document.getElementById('progFill').style.width='100%'; if(failed>0){document.getElementById('progStats').textContent=`${total-failed}성공/${failed}실패`; document.getElementById('progActions').style.display='block'; document.getElementById('progActions').innerHTML=`<button class="btn primary" onclick="retryFailed()">🔄 재시도</button> <button class="btn" onclick="closeUploadOverlay()">닫기</button>`;} else{document.getElementById('progStats').textContent=`✅ ${total}개 완료!`; setTimeout(()=>{closeUploadOverlay();toast(`${total}개 업로드 완료`);},1000);} pendingUploads=[]; loadDir(currentPath); }
+function closeUploadOverlay(){document.getElementById('uploadOverlay')?.remove();}
+async function retryFailed(){pendingUploads=[...failedUploads];currentPath=lastUploadTargetPath;closeUploadOverlay();await doUpload();}
 
 // ===== MKDIR =====
-function showMkdirModal() {
-    showModal(`
-        <h3>📁 새 폴더 만들기</h3>
-        <input type="text" id="mkdirInput" placeholder="폴더 이름" />
-        <div class="modal-actions">
-            <button class="btn" onclick="closeModal()">취소</button>
-            <button class="btn primary" onclick="doMkdir()">만들기</button>
-        </div>
-    `);
-    setTimeout(() => document.getElementById('mkdirInput')?.focus(), 100);
-}
+function showMkdirModal(){ showModal(`<h3>📁 새 폴더</h3><input type="text" id="mkdirInput" placeholder="폴더 이름"><div class="modal-actions"><button class="btn" onclick="closeModal()">취소</button><button class="btn primary" onclick="doMkdir()">만들기</button></div>`); setTimeout(()=>document.getElementById('mkdirInput')?.focus(),100); }
+async function doMkdir(){ const n=document.getElementById('mkdirInput').value.trim(); if(!n)return; try{await api('/mkdir',{path:currentPath?currentPath+'/'+n:n});toast('생성: '+n);closeModal();loadDir(currentPath);}catch(e){toast('실패','error');} }
 
-async function doMkdir() {
-    const name = document.getElementById('mkdirInput').value.trim();
-    if (!name) return;
-    const newPath = currentPath ? currentPath + '/' + name : name;
-    try {
-        await api('/mkdir', { path: newPath });
-        toast('폴더 생성 완료: ' + name);
-        closeModal();
-        loadDir(currentPath);
-    } catch (err) {
-        toast('폴더 생성 실패: ' + err.message, 'error');
-    }
-}
+// ===== BACKUP =====
+async function backupST(){ toast('백업 중...'); try{const r=await api('/backup');const d=await r.json();toast(`백업 완료! ${d.backupName}`);loadDir(currentPath);}catch(e){toast('백업 실패','error');} }
+function showRestoreModal(){ showModal(`<h3>🔄 복원</h3><input type="text" id="restoreInput" placeholder="백업파일 경로"><div class="modal-actions"><button class="btn" onclick="closeModal()">취소</button><button class="btn primary" onclick="doRestore()">복원</button></div>`); }
+async function doRestore(){ const p=document.getElementById('restoreInput').value.trim(); if(!p||!confirm('복원?'))return; try{await api('/restore',{path:p});toast('복원 완료!');closeModal();}catch(e){toast('실패','error');} }
 
-// ===== BACKUP & RESTORE =====
-async function backupST() {
-    toast('백업 중...');
-    try {
-        const res = await api('/backup');
-        const data = await res.json();
-        toast(`백업 완료! ${data.backupName}`);
-        loadDir(currentPath);
-    } catch (err) {
-        toast('백업 실패: ' + err.message, 'error');
-    }
-}
+// ===== COPY/PASTE =====
+let clipboardItem=null, clipboardPath='';
+function copySelected(){ const item=getFirstSelected(); if(!item)return; clipboardItem=item; clipboardPath=getItemPath(item); toast(`📋 복사: ${item.name}`); }
+async function pasteHere(){ if(!clipboardItem)return toast('복사된 파일 없음','error'); try{await api('/copy',{from:clipboardPath,to:currentPath?currentPath+'/'+clipboardItem.name:clipboardItem.name});toast(`붙여넣기: ${clipboardItem.name}`);loadDir(currentPath);}catch(e){toast('실패','error');} }
 
-function showRestoreModal() {
-    showModal(`
-        <h3>🔄 백업에서 복원</h3>
-        <p style="font-size:13px;color:var(--text-dim);margin-bottom:12px">
-            홈 디렉토리에 있는 .tar.gz 백업 파일의 경로를 입력하세요.<br>
-            예: st-backup-2025-01-01T12-00-00-000Z.tar.gz
-        </p>
-        <input type="text" id="restoreInput" placeholder="백업 파일 경로 (홈 기준)" />
-        <div class="modal-actions">
-            <button class="btn" onclick="closeModal()">취소</button>
-            <button class="btn primary" onclick="doRestore()">복원</button>
-        </div>
-    `);
-    setTimeout(() => document.getElementById('restoreInput')?.focus(), 100);
-}
+// ===== FAVORITES =====
+function getFavorites(){try{return JSON.parse(localStorage.getItem('tfm-favorites')||'[]');}catch{return[];}}
+function saveFavorites(f){localStorage.setItem('tfm-favorites',JSON.stringify(f));}
+function addFavorite(){ const favs=getFavorites(); const name=currentPath?currentPath.split('/').pop():'홈'; if(favs.some(f=>f.path===currentPath))return toast('이미 있음'); favs.push({name,path:currentPath}); saveFavorites(favs); renderFavorites(); toast(`⭐ 추가: ${name}`); }
+function removeFavorite(idx){ const f=getFavorites(); f.splice(idx,1); saveFavorites(f); renderFavorites(); }
+function renderFavorites(){ const bar=document.getElementById('favBar'); const favs=getFavorites(); if(!favs.length){bar.classList.add('hidden');return;} bar.classList.remove('hidden'); bar.innerHTML=favs.map((f,i)=>`<div class="fav-chip" onclick="loadDir('${escHtml(f.path)}')">⭐ ${escHtml(f.name)} <span class="fav-remove" onclick="event.stopPropagation();removeFavorite(${i})">✕</span></div>`).join(''); }
 
-async function doRestore() {
-    const backupPath = document.getElementById('restoreInput').value.trim();
-    if (!backupPath) return;
-    if (!confirm('정말 복원하시겠습니까? 현재 데이터를 덮어씁니다.')) return;
-    try {
-        const res = await api('/restore', { path: backupPath });
-        const data = await res.json();
-        toast('복원 완료! SillyTavern을 재시작하세요.');
-        closeModal();
-    } catch (err) {
-        toast('복원 실패: ' + err.message, 'error');
-    }
-}
+// ===== SETTINGS =====
+function showSettingsModal(){ showModal(`<h3>⚙️ 설정</h3><p style="font-size:12px;color:var(--accent);margin-bottom:8px;font-weight:600">📦 업데이트</p><div style="display:flex;flex-direction:column;gap:6px;margin-bottom:16px"><button class="btn primary" onclick="doUpdate('fm')" style="width:100%">📂 파일매니저</button><button class="btn" onclick="doUpdate('st')" style="width:100%">🎭 SillyTavern</button><button class="btn" onclick="doUpdate('library')" style="width:100%">📚 도서관</button></div><p style="font-size:12px;color:var(--accent);margin-bottom:8px;font-weight:600">🔧 서버</p><div style="display:flex;flex-direction:column;gap:6px;margin-bottom:16px"><button class="btn" onclick="doUpdate('st-start')" style="width:100%">🚀 ST 시작</button><button class="btn" onclick="doUpdate('st-stop')" style="width:100%">⏹ ST 종료</button><button class="btn" onclick="doUpdate('library-start')" style="width:100%">🚀 도서관 시작</button><button class="btn" onclick="doUpdate('library-stop')" style="width:100%">⏹ 도서관 종료</button><button class="btn danger" onclick="doRestart()" style="width:100%">🔁 FM 재시작</button></div><p style="font-size:12px;color:var(--accent);margin-bottom:8px;font-weight:600">💾 백업</p><div style="display:flex;flex-direction:column;gap:6px;margin-bottom:16px"><button class="btn primary" onclick="closeModal();backupST()" style="width:100%">💾 ST 백업</button><button class="btn" onclick="closeModal();showRestoreModal()" style="width:100%">🔄 복원</button></div><p style="font-size:12px;color:var(--accent);margin-bottom:8px;font-weight:600">🔗 도서관 URL</p><input type="text" id="libraryUrlInput" value="${getLibraryUrl()}"><button class="btn" onclick="saveLibraryUrl()" style="width:100%;margin-bottom:12px">저장</button><div id="updateLog" class="preview-content" style="margin-top:8px;display:none"></div><div class="modal-actions"><button class="btn" onclick="closeModal()">닫기</button></div>`); }
+function saveLibraryUrl(){const u=document.getElementById('libraryUrlInput').value.trim();if(u){localStorage.setItem('tfm-library-url',u);toast('URL 저장');}}
+function getLibraryUrl(){return localStorage.getItem('tfm-library-url')||'http://localhost:7860';}
+async function doUpdate(t){ const l=document.getElementById('updateLog'); l.style.display='block'; l.textContent='⏳ 진행 중...\n'; try{const r=await api('/update',{target:t});const d=await r.json();l.textContent+=d.log||'';if(d.success){l.textContent+='\n✅ 완료!';if(t==='fm'){l.textContent+='\n🔄 3초 후 새로고침';setTimeout(()=>location.reload(),3000);}}}catch(e){l.textContent+='\n❌ '+e.message;} }
+async function doRestart(){ const l=document.getElementById('updateLog'); l.style.display='block'; l.textContent='🔄 재시작 중...'; try{await api('/restart');}catch(e){} setTimeout(()=>location.reload(),3000); }
 
-// ===== COPY FILE/FOLDER =====
-let clipboardItem = null;
-let clipboardPath = '';
+// ===== MODAL =====
+function showModal(h){document.getElementById('modalContent').innerHTML=h;document.getElementById('modalOverlay').classList.add('active');}
+function closeModal(){document.getElementById('modalOverlay').classList.remove('active');}
+function closeModalOutside(ev){if(ev.target===document.getElementById('modalOverlay'))closeModal();}
 
-function copySelected() {
-    if (!selectedItem) return toast('파일을 선택해주세요', 'error');
-    clipboardItem = selectedItem;
-    clipboardPath = getItemPath(selectedItem);
-    toast(`📋 복사됨: ${selectedItem.name} — 원하는 폴더에서 붙여넣기(📋) 하세요`);
-}
-
-async function pasteHere() {
-    if (!clipboardItem || !clipboardPath) return toast('복사된 파일이 없습니다', 'error');
-    const destPath = currentPath ? currentPath + '/' + clipboardItem.name : clipboardItem.name;
-    try {
-        await api('/copy', { from: clipboardPath, to: destPath });
-        toast(`붙여넣기 완료: ${clipboardItem.name}`);
-        loadDir(currentPath);
-    } catch (err) {
-        toast('붙여넣기 실패: ' + err.message, 'error');
-    }
-}
-
-// ===== SETTINGS MODAL (통합) =====
-function showSettingsModal() {
-    const libraryUrl = 'https://tomatoes-demonstration-thing-propecia.trycloudflare.com/';
-    showModal(`
-        <h3>⚙️ 설정 & 관리</h3>
-
-        <p style="font-size:12px;color:var(--accent);margin-bottom:12px;font-weight:600">📦 업데이트</p>
-        <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:16px">
-            <button class="btn primary" onclick="doUpdate('fm')" style="width:100%;justify-content:center">
-                📂 파일매니저 업데이트 (git pull + 재시작)
-            </button>
-            <button class="btn" onclick="doUpdate('st')" style="width:100%;justify-content:center">
-                🎭 SillyTavern 업데이트 (git pull + npm install)
-            </button>
-            <button class="btn" onclick="doUpdate('library')" style="width:100%;justify-content:center">
-                📚 도서관 업데이트 (git pull + 재시작)
-            </button>
-        </div>
-
-        <p style="font-size:12px;color:var(--accent);margin-bottom:12px;font-weight:600">🔧 서버 관리</p>
-        <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:16px">
-            <button class="btn" onclick="doUpdate('st-start')" style="width:100%;justify-content:center">
-                🚀 SillyTavern 시작 (./start.sh)
-            </button>
-            <button class="btn" onclick="doUpdate('st-stop')" style="width:100%;justify-content:center">
-                ⏹ SillyTavern 종료
-            </button>
-            <button class="btn" onclick="doUpdate('library-start')" style="width:100%;justify-content:center">
-                🚀 도서관 시작
-            </button>
-            <button class="btn" onclick="doUpdate('library-stop')" style="width:100%;justify-content:center">
-                ⏹ 도서관 종료
-            </button>
-            <button class="btn danger" onclick="doRestart()" style="width:100%;justify-content:center">
-                🔁 파일매니저 재시작
-            </button>
-        </div>
-
-        <p style="font-size:12px;color:var(--accent);margin-bottom:12px;font-weight:600">💾 백업 & 복원</p>
-        <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:16px">
-            <button class="btn primary" onclick="closeModal(); backupST()" style="width:100%;justify-content:center">
-                💾 SillyTavern 백업
-            </button>
-            <button class="btn" onclick="closeModal(); showRestoreModal()" style="width:100%;justify-content:center">
-                🔄 백업에서 복원
-            </button>
-        </div>
-
-        <p style="font-size:12px;color:var(--accent);margin-bottom:12px;font-weight:600">🔗 도서관 URL</p>
-        <input type="text" id="libraryUrlInput" value="${libraryUrl}" style="margin-bottom:8px" />
-        <button class="btn" onclick="saveLibraryUrl()" style="width:100%;justify-content:center;margin-bottom:12px">저장</button>
-
-        <div id="updateLog" class="preview-content" style="margin-top:8px;display:none;text-align:left"></div>
-        <div class="modal-actions">
-            <button class="btn" onclick="closeModal()">닫기</button>
-        </div>
-    `);
-}
-
-function saveLibraryUrl() {
-    const url = document.getElementById('libraryUrlInput').value.trim();
-    if (url) {
-        localStorage.setItem('tfm-library-url', url);
-        toast('도서관 URL 저장됨');
-    }
-}
-
-function getLibraryUrl() {
-    return localStorage.getItem('tfm-library-url') || 'https://tomatoes-demonstration-thing-propecia.trycloudflare.com/';
-}
-
-// ===== UPDATE & RESTART =====
-function showUpdateModal() { showSettingsModal(); } // 호환성
-
-async function doUpdate(target) {
-    const logEl = document.getElementById('updateLog');
-    logEl.style.display = 'block';
-    logEl.textContent = '⏳ 업데이트 중...\n';
-
-    try {
-        const res = await api('/update', { target });
-        const data = await res.json();
-        logEl.textContent += data.log || '';
-        if (data.success) {
-            logEl.textContent += '\n✅ 완료!';
-            if (target === 'fm') {
-                logEl.textContent += '\n🔄 3초 후 자동 새로고침...';
-                setTimeout(() => location.reload(), 3000);
-            } else {
-                logEl.textContent += '\nSillyTavern은 수동 재시작이 필요합니다.';
-            }
-        }
-    } catch (err) {
-        logEl.textContent += '\n❌ 실패: ' + err.message;
-    }
-}
-
-async function doRestart() {
-    const logEl = document.getElementById('updateLog');
-    logEl.style.display = 'block';
-    logEl.textContent = '🔄 재시작 중...\n3초 후 새로고침합니다...';
-
-    try {
-        await api('/restart');
-    } catch (e) { /* 서버가 죽으면서 연결 끊기는 건 정상 */ }
-
-    setTimeout(() => location.reload(), 3000);
-}
-
-// ===== MODAL HELPERS =====
-function showModal(html) {
-    document.getElementById('modalContent').innerHTML = html;
-    document.getElementById('modalOverlay').classList.add('active');
-}
-function closeModal() {
-    document.getElementById('modalOverlay').classList.remove('active');
-}
-function closeModalOutside(ev) {
-    if (ev.target === document.getElementById('modalOverlay')) closeModal();
-}
-
-// ===== KEYBOARD SHORTCUTS =====
-document.addEventListener('keydown', (ev) => {
-    if (ev.key === 'Escape') closeModal();
-    if (ev.key === 'Backspace' && !document.querySelector('.modal-overlay.active')) {
-        ev.preventDefault();
-        goUp();
-    }
+// ===== KEYBOARD =====
+document.addEventListener('keydown',ev=>{
+    const inModal=document.querySelector('.modal-overlay.active');
+    if(ev.key==='Escape'){if(inModal)closeModal();else if(isSearchMode){document.getElementById('searchInput').value='';onSearchInput('');}}
+    if(!inModal&&ev.key==='Backspace'&&!['INPUT','TEXTAREA'].includes(document.activeElement.tagName)){ev.preventDefault();goUp();}
+    if(!inModal&&ev.key==='Delete'&&selectedItems.size>0){ev.preventDefault();if(selectedItems.size>1)batchDelete();else deleteSelected();}
+    if(!inModal&&ev.key==='a'&&(ev.ctrlKey||ev.metaKey)&&!termState.visible){ev.preventDefault();for(let i=0;i<fileItems.length;i++)selectedItems.add(i);updateSelectionUI();}
+    if(!inModal&&ev.key==='f'&&(ev.ctrlKey||ev.metaKey)&&!termState.visible){ev.preventDefault();document.getElementById('searchInput').focus();}
 });
+document.getElementById('fileArea').addEventListener('click',ev=>{if(!ev.target.closest('.file-item'))clearSelection();});
 
 // ===== TERMINAL =====
-const termState = {
-    sessions: {},   // id -> { id, alive, buffer, eventSource }
-    activeId: null,
-    cmdHistory: [],
-    histIdx: -1,
-    visible: false,
-};
+const termState={sessions:{},activeId:null,cmdHistory:[],histIdx:-1,visible:false};
+function toggleTerminal(){ termState.visible=!termState.visible; const tv=document.getElementById('terminalView'),fa=document.getElementById('fileArea'),tb=document.getElementById('mainToolbar'),st=document.getElementById('subToolbar'),sb=document.getElementById('selectionBar'),fb=document.getElementById('favBar'),sr=document.getElementById('searchResultsBar'),btn=document.getElementById('termToggleBtn');
+if(termState.visible){tv.classList.add('active');fa.classList.add('file-area-hidden');tb.classList.add('toolbar-hidden');st.classList.add('hidden');sb.classList.add('hidden');fb.classList.add('hidden');sr.classList.add('hidden');btn.classList.add('primary');btn.textContent='📂 파일'; if(!termState.activeId||!termState.sessions[termState.activeId]?.alive)termNewTab(); document.getElementById('termInput').focus();}
+else{tv.classList.remove('active');fa.classList.remove('file-area-hidden');tb.classList.remove('toolbar-hidden');st.classList.remove('hidden');renderFavorites();btn.classList.remove('primary');btn.textContent='🖥 터미널';} }
 
-function toggleTerminal() {
-    termState.visible = !termState.visible;
-    const termView = document.getElementById('terminalView');
-    const fileArea = document.getElementById('fileArea');
-    const toolbar = document.querySelector('.toolbar');
-    const btn = document.getElementById('termToggleBtn');
+async function termNewTab(cwd){ try{ document.getElementById('termOutput').textContent='연결 중...'; const res=await fetch(API_BASE+'/terminal/spawn',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cwd:cwd||''})}); const d=await res.json(); if(d.error)return toast('실패: '+d.error,'error'); const s={id:d.id,alive:true,buffer:'',eventSource:null,cwd:cwd||'/data/data/com.termux/files/home'}; termState.sessions[d.id]=s; termState.activeId=d.id; termConnectSSE(d.id); termRenderTabs(); termUpdateStatus();
+try{const er=await fetch(API_BASE+'/terminal/exec',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({command:'echo "=== 터미널 #'+d.id+' ===" && echo "$(whoami)@$(hostname):$(pwd)" && echo "---"',sessionId:d.id})}); const ed=await er.json(); s.buffer=(ed.output||'')+'\n'; if(ed.cwd)s.cwd=ed.cwd;}catch(e){s.buffer='연결됨\n';}
+termRenderOutput(); document.getElementById('termInput')?.focus(); }catch(e){toast('연결 실패','error');} }
 
-    if (termState.visible) {
-        termView.classList.add('active');
-        fileArea.classList.add('file-area-hidden');
-        toolbar.classList.add('toolbar-hidden');
-        btn.classList.add('primary');
-        btn.textContent = '📂 파일';
-        // 세션 없으면 자동 생성
-        if (!termState.activeId || !termState.sessions[termState.activeId]?.alive) {
-            termNewTab();
-        }
-        document.getElementById('termInput').focus();
-    } else {
-        termView.classList.remove('active');
-        fileArea.classList.remove('file-area-hidden');
-        toolbar.classList.remove('toolbar-hidden');
-        btn.classList.remove('primary');
-        btn.textContent = '🖥 터미널';
-    }
-}
+function termConnectSSE(id){ const s=termState.sessions[id]; if(!s)return; if(s.eventSource)try{s.eventSource.close();}catch(e){} const es=new EventSource(API_BASE+'/terminal/stream?id='+id); s.eventSource=es;
+es.onmessage=e=>{try{const m=JSON.parse(e.data); if(m.type==='history')s.buffer=m.data; else if(m.type==='output')s.buffer+=m.data; else if(m.type==='exit'||m.type==='error'){s.buffer+=m.data||'';s.alive=false;termUpdateStatus();termRenderTabs();} if(termState.activeId===id)termRenderOutput();}catch(er){}};
+es.onerror=()=>{if(s.alive&&!s._rec){s._rec=true;setTimeout(()=>{s._rec=false;if(s.alive)termConnectSSE(id);},2000);}}; }
 
-async function termNewTab(cwd) {
-    try {
-        document.getElementById('termOutput').textContent = '터미널 연결 중...';
+function termRenderOutput(){ const s=termState.sessions[termState.activeId]; if(!s)return; const el=document.getElementById('termOutput'); let t=s.buffer; t=t.replace(/\x1b\[[0-9;?]*[a-zA-Z]/g,'').replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g,'').replace(/\x1b[()][A-Z0-9]/g,'').replace(/\x1b[>=<]/g,'').replace(/\r(?!\n)/g,'').replace(/\x07/g,''); if(t.length>200000)t=t.slice(-150000); el.textContent=t; requestAnimationFrame(()=>{el.scrollTop=el.scrollHeight;}); }
+function termRenderTabs(){ document.getElementById('termTabs').innerHTML=Object.values(termState.sessions).map(s=>`<span class="term-tab ${s.id===termState.activeId?'active':''}" onclick="termSwitchTab('${s.id}')">${s.alive?'🟢':'⚫'} #${s.id}<span class="tab-close" onclick="event.stopPropagation();termCloseTab('${s.id}')">×</span></span>`).join(''); }
+function termSwitchTab(id){termState.activeId=id;termRenderTabs();termRenderOutput();termUpdateStatus();document.getElementById('termInput')?.focus();}
+async function termCloseTab(id){ const s=termState.sessions[id]; if(s){if(s.eventSource)try{s.eventSource.close();}catch(e){} if(s.alive)try{await fetch(API_BASE+'/terminal/kill',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})});}catch(e){} delete termState.sessions[id];} const rem=Object.keys(termState.sessions); termState.activeId=rem.length?rem[rem.length-1]:null; if(!termState.activeId)document.getElementById('termOutput').textContent=''; termRenderTabs();termRenderOutput();termUpdateStatus(); }
+function termUpdateStatus(){ const s=termState.sessions[termState.activeId]; const dot=document.getElementById('termDot'),txt=document.getElementById('termStatusText'); if(!s){dot.className='term-dot';txt.textContent='연결 안 됨';} else if(s.alive){dot.className='term-dot alive';txt.textContent=`#${s.id} | ${(s.cwd||'~').replace(/^\/data\/data\/com\.termux\/files\/home/,'~')}`;} else{dot.className='term-dot';txt.textContent=`#${s.id} 종료됨`;} }
 
-        // Create a lightweight session (spawn is still used for background process + SSE)
-        const res = await fetch(API_BASE + '/terminal/spawn', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ cwd: cwd || '' }),
-        });
-        const d = await res.json();
-        if (d.error) { toast('터미널 생성 실패: ' + d.error, 'error'); return; }
+async function termSendInput(){ const input=document.getElementById('termInput'),cmd=input.value; const s=termState.sessions[termState.activeId]; if(!s?.alive)return toast('터미널 없음','error'); if(cmd.trim()){termState.cmdHistory.push(cmd);if(termState.cmdHistory.length>200)termState.cmdHistory=termState.cmdHistory.slice(-100);} termState.histIdx=-1; input.value=''; const pr=(s.cwd||'~').replace(/^\/data\/data\/com\.termux\/files\/home/,'~'); s.buffer+=pr+'$ '+cmd+'\n'; termRenderOutput(); if(!cmd.trim())return;
+try{const r=await fetch(API_BASE+'/terminal/exec',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({command:cmd,sessionId:s.id})}); const d=await r.json(); if(d.cwd)s.cwd=d.cwd; if(d.output){s.buffer+=d.output;if(!d.output.endsWith('\n'))s.buffer+='\n';} termRenderOutput();termUpdateStatus();}catch(e){s.buffer+='❌ '+e.message+'\n';termRenderOutput();} }
 
-        const homeDir = '/data/data/com.termux/files/home';
-        const session = { id: d.id, alive: true, buffer: '', eventSource: null, cwd: cwd || homeDir };
-        termState.sessions[d.id] = session;
-        termState.activeId = d.id;
+async function termSignal(sig){if(!termState.activeId)return;try{await fetch(API_BASE+'/terminal/signal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:termState.activeId,signal:sig||'SIGINT'})});}catch(e){}}
+async function termKillCurrent(){if(!termState.activeId||!confirm('종료?'))return;await termCloseTab(termState.activeId);}
+function termClearScreen(){const s=termState.sessions[termState.activeId];if(s)s.buffer='';document.getElementById('termOutput').textContent='';}
+function termQuick(cmd){const s=termState.sessions[termState.activeId];if(!s?.alive)return toast('터미널 없음','error');document.getElementById('termInput').value=cmd;termSendInput();}
 
-        // Connect SSE in background (may or may not work)
-        termConnectSSE(d.id);
-        termRenderTabs();
-        termUpdateStatus();
+document.addEventListener('DOMContentLoaded',()=>{const ti=document.getElementById('termInput'); if(ti)ti.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();termSendInput();}else if(e.key==='ArrowUp'){e.preventDefault();if(termState.cmdHistory.length>0){if(termState.histIdx<0)termState.histIdx=termState.cmdHistory.length;termState.histIdx=Math.max(0,termState.histIdx-1);ti.value=termState.cmdHistory[termState.histIdx]||'';}}else if(e.key==='ArrowDown'){e.preventDefault();if(termState.histIdx>=0){termState.histIdx=Math.min(termState.cmdHistory.length,termState.histIdx+1);ti.value=termState.cmdHistory[termState.histIdx]||'';}}else if(e.key==='c'&&e.ctrlKey){e.preventDefault();termSignal('SIGINT');}});});
 
-        // Run initial command via exec to show welcome + pwd
-        try {
-            const execRes = await fetch(API_BASE + '/terminal/exec', {
-                method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    command: 'echo "=== 터미널 #' + d.id + ' ===" && echo "$(whoami)@$(hostname):$(pwd)" && echo "---"',
-                    sessionId: d.id,
-                }),
-            });
-            const execData = await execRes.json();
-            session.buffer = (execData.output || '') + '\n';
-            if (execData.cwd) session.cwd = execData.cwd;
-        } catch (e) {
-            session.buffer = '터미널 연결됨 (exec 모드)\n';
-        }
-        termRenderOutput();
-        document.getElementById('termInput')?.focus();
-    } catch (e) {
-        toast('터미널 연결 실패: ' + e.message, 'error');
-        document.getElementById('termOutput').textContent = '❌ 터미널 연결 실패: ' + e.message;
-    }
-}
-
-function termConnectSSE(id) {
-    const session = termState.sessions[id];
-    if (!session) return;
-    if (session.eventSource) try { session.eventSource.close(); } catch (e) {}
-
-    const es = new EventSource(API_BASE + '/terminal/stream?id=' + id);
-    session.eventSource = es;
-
-    es.onmessage = (e) => {
-        try {
-            const msg = JSON.parse(e.data);
-            if (msg.type === 'history') {
-                session.buffer = msg.data;
-            } else if (msg.type === 'output') {
-                session.buffer += msg.data;
-            } else if (msg.type === 'exit' || msg.type === 'error') {
-                session.buffer += msg.data || '';
-                session.alive = false;
-                termUpdateStatus();
-                termRenderTabs();
-            }
-            if (termState.activeId === id) termRenderOutput();
-        } catch (err) {
-            console.error('[Terminal SSE parse error]', err);
-        }
-    };
-
-    es.onerror = (e) => {
-        console.error('[Terminal SSE error]', e);
-        // If we lost connection, try to reconnect once after 2s
-        if (session.alive && !session._reconnecting) {
-            session._reconnecting = true;
-            setTimeout(() => {
-                session._reconnecting = false;
-                if (session.alive) {
-                    console.log('[Terminal] Reconnecting SSE for #' + id);
-                    termConnectSSE(id);
-                }
-            }, 2000);
-        }
-    };
-}
-
-function termRenderOutput() {
-    const session = termState.sessions[termState.activeId];
-    if (!session) return;
-    const el = document.getElementById('termOutput');
-    let text = session.buffer;
-    // Strip ANSI escape sequences (comprehensive)
-    text = text.replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, '');  // CSI sequences
-    text = text.replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, '');  // OSC sequences
-    text = text.replace(/\x1b[()][A-Z0-9]/g, '');  // Character set
-    text = text.replace(/\x1b[>=<]/g, '');  // Keypad modes
-    text = text.replace(/\x1b\[[\?]?[0-9;]*[hl]/g, '');  // Mode set/reset
-    text = text.replace(/\r(?!\n)/g, '');  // Bare carriage returns
-    text = text.replace(/\x07/g, '');  // Bell
-    if (text.length > 200000) text = text.slice(-150000);
-    el.textContent = text;
-    requestAnimationFrame(() => { el.scrollTop = el.scrollHeight; });
-}
-
-function termRenderTabs() {
-    const container = document.getElementById('termTabs');
-    container.innerHTML = Object.values(termState.sessions).map(s => {
-        const active = s.id === termState.activeId ? 'active' : '';
-        const dot = s.alive ? '🟢' : '⚫';
-        return `<span class="term-tab ${active}" onclick="termSwitchTab('${s.id}')">
-            ${dot} #${s.id}
-            <span class="tab-close" onclick="event.stopPropagation();termCloseTab('${s.id}')">×</span>
-        </span>`;
-    }).join('');
-}
-
-function termSwitchTab(id) {
-    termState.activeId = id;
-    termRenderTabs();
-    termRenderOutput();
-    termUpdateStatus();
-    document.getElementById('termInput')?.focus();
-}
-
-async function termCloseTab(id) {
-    const session = termState.sessions[id];
-    if (session) {
-        if (session.eventSource) try { session.eventSource.close(); } catch (e) {}
-        if (session.alive) {
-            try { await fetch(API_BASE + '/terminal/kill', {
-                method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ id }),
-            }); } catch (e) {}
-        }
-        delete termState.sessions[id];
-    }
-    const remaining = Object.keys(termState.sessions);
-    if (remaining.length > 0) {
-        termState.activeId = remaining[remaining.length - 1];
-    } else {
-        termState.activeId = null;
-        document.getElementById('termOutput').textContent = '';
-    }
-    termRenderTabs();
-    termRenderOutput();
-    termUpdateStatus();
-}
-
-function termUpdateStatus() {
-    const session = termState.sessions[termState.activeId];
-    const dot = document.getElementById('termDot');
-    const text = document.getElementById('termStatusText');
-    if (!session) {
-        dot.className = 'term-dot';
-        text.textContent = '연결 안 됨';
-    } else if (session.alive) {
-        dot.className = 'term-dot alive';
-        const shortCwd = session.cwd ? session.cwd.replace(/^\/data\/data\/com\.termux\/files\/home/, '~') : '~';
-        text.textContent = `세션 #${session.id} | ${shortCwd}`;
-    } else {
-        dot.className = 'term-dot';
-        text.textContent = `세션 #${session.id} 종료됨`;
-    }
-}
-
-async function termSendInput() {
-    const input = document.getElementById('termInput');
-    const cmd = input.value;
-    const session = termState.sessions[termState.activeId];
-    if (!session?.alive) { toast('터미널이 없거나 종료됨', 'error'); return; }
-
-    if (cmd.trim()) {
-        termState.cmdHistory.push(cmd);
-        if (termState.cmdHistory.length > 200) termState.cmdHistory = termState.cmdHistory.slice(-100);
-    }
-    termState.histIdx = -1;
-    input.value = '';
-
-    // Show prompt + command
-    const promptPath = session.cwd ? session.cwd.replace(/^\/data\/data\/com\.termux\/files\/home/, '~') : '~';
-    session.buffer += promptPath + '$ ' + cmd + '\n';
-    termRenderOutput();
-
-    if (!cmd.trim()) return;
-
-    try {
-        const execRes = await fetch(API_BASE + '/terminal/exec', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ command: cmd, sessionId: session.id }),
-        });
-        const execData = await execRes.json();
-
-        // Update cwd from server
-        if (execData.cwd) session.cwd = execData.cwd;
-
-        if (execData.output) {
-            session.buffer += execData.output;
-            if (!execData.output.endsWith('\n')) session.buffer += '\n';
-        }
-        termRenderOutput();
-        termUpdateStatus();
-    } catch (e) {
-        session.buffer += '❌ 실행 실패: ' + e.message + '\n';
-        termRenderOutput();
-    }
-}
-
-async function termSignal(sig) {
-    if (!termState.activeId) return;
-    try {
-        await fetch(API_BASE + '/terminal/signal', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id: termState.activeId, signal: sig || 'SIGINT' }),
-        });
-    } catch (e) { toast('시그널 전송 실패', 'error'); }
-}
-
-async function termKillCurrent() {
-    if (!termState.activeId) return;
-    if (!confirm('이 터미널 세션을 종료할까요?')) return;
-    await termCloseTab(termState.activeId);
-}
-
-function termClearScreen() {
-    const session = termState.sessions[termState.activeId];
-    if (session) session.buffer = '';
-    document.getElementById('termOutput').textContent = '';
-}
-
-function termQuick(cmd) {
-    const session = termState.sessions[termState.activeId];
-    if (!session?.alive) { toast('터미널이 없거나 종료됨', 'error'); return; }
-    document.getElementById('termInput').value = cmd;
-    termSendInput();
-}
-
-// 터미널 입력 키 이벤트
-document.addEventListener('DOMContentLoaded', () => {
-    const ti = document.getElementById('termInput');
-    if (ti) {
-        ti.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') { e.preventDefault(); termSendInput(); }
-            else if (e.key === 'ArrowUp') {
-                e.preventDefault();
-                if (termState.cmdHistory.length > 0) {
-                    if (termState.histIdx < 0) termState.histIdx = termState.cmdHistory.length;
-                    termState.histIdx = Math.max(0, termState.histIdx - 1);
-                    ti.value = termState.cmdHistory[termState.histIdx] || '';
-                }
-            }
-            else if (e.key === 'ArrowDown') {
-                e.preventDefault();
-                if (termState.histIdx >= 0) {
-                    termState.histIdx = Math.min(termState.cmdHistory.length, termState.histIdx + 1);
-                    ti.value = termState.cmdHistory[termState.histIdx] || '';
-                }
-            }
-            else if (e.key === 'c' && e.ctrlKey) {
-                e.preventDefault();
-                termSignal('SIGINT');
-            }
-        });
-    }
-});
-
-// ===== INIT =====
-loadDir('');
+renderFavorites(); loadDir('');
 </script>
 </body>
 </html>

@@ -332,6 +332,152 @@ function init(app) {
         }
     });
 
+    // ===== WRITE text file (편집기) =====
+    router.post('/write', express.json({ limit: '5mb' }), (req, res) => {
+        try {
+            const filePath = resolveSafe(req.body.path);
+            if (typeof req.body.content !== 'string') {
+                return res.status(400).json({ error: 'content must be string' });
+            }
+            // 디렉토리인지 확인
+            if (fs.existsSync(filePath) && fs.statSync(filePath).isDirectory()) {
+                return res.status(400).json({ error: 'Cannot write to a directory' });
+            }
+            // 부모 디렉토리 확인
+            fs.mkdirSync(path.dirname(filePath), { recursive: true });
+            fs.writeFileSync(filePath, req.body.content, 'utf-8');
+            const stat = fs.statSync(filePath);
+            res.json({ success: true, size: stat.size });
+        } catch (err) {
+            res.status(400).json({ error: err.message });
+        }
+    });
+
+    // ===== SEARCH files (재귀 검색) =====
+    router.post('/search', express.json(), (req, res) => {
+        try {
+            const basePath = resolveSafe(req.body.path || '');
+            const query = (req.body.query || '').toLowerCase().trim();
+            if (!query) return res.json({ results: [] });
+
+            const results = [];
+            const maxResults = 100;
+            const maxDepth = 8;
+
+            function searchDir(dir, depth) {
+                if (depth > maxDepth || results.length >= maxResults) return;
+                try {
+                    const items = fs.readdirSync(dir, { withFileTypes: true });
+                    for (const item of items) {
+                        if (results.length >= maxResults) break;
+                        if (item.name.toLowerCase().includes(query)) {
+                            const fullPath = path.join(dir, item.name);
+                            const relPath = path.relative(basePath, fullPath);
+                            let size = 0, mtime = null;
+                            try {
+                                const stat = fs.statSync(fullPath);
+                                size = stat.size;
+                                mtime = stat.mtime.toISOString();
+                            } catch (e) {}
+                            results.push({
+                                name: item.name,
+                                path: relPath,
+                                fullPath: fullPath,
+                                isDirectory: item.isDirectory(),
+                                size, mtime,
+                            });
+                        }
+                        if (item.isDirectory() && !item.name.startsWith('.') && item.name !== 'node_modules') {
+                            searchDir(path.join(dir, item.name), depth + 1);
+                        }
+                    }
+                } catch (e) { /* permission denied */ }
+            }
+
+            searchDir(basePath, 0);
+            res.json({ results, basePath });
+        } catch (err) {
+            res.status(400).json({ error: err.message });
+        }
+    });
+
+    // ===== FILE INFO (상세 정보) =====
+    router.post('/info', express.json(), (req, res) => {
+        try {
+            const filePath = resolveSafe(req.body.path);
+            const stat = fs.statSync(filePath);
+            const info = {
+                name: path.basename(filePath),
+                path: filePath,
+                isDirectory: stat.isDirectory(),
+                size: stat.size,
+                mtime: stat.mtime.toISOString(),
+                atime: stat.atime.toISOString(),
+                ctime: stat.ctime.toISOString(),
+                mode: '0' + (stat.mode & parseInt('777', 8)).toString(8),
+                uid: stat.uid,
+                gid: stat.gid,
+            };
+            if (stat.isDirectory()) {
+                try { info.childCount = fs.readdirSync(filePath).length; } catch (e) {}
+            }
+            // 심볼릭 링크 확인
+            try {
+                const lstat = fs.lstatSync(filePath);
+                info.isSymlink = lstat.isSymbolicLink();
+                if (info.isSymlink) {
+                    info.linkTarget = fs.readlinkSync(filePath);
+                }
+            } catch (e) {}
+            res.json(info);
+        } catch (err) {
+            res.status(400).json({ error: err.message });
+        }
+    });
+
+    // ===== SERVE IMAGE (이미지 미리보기용) =====
+    router.get('/preview-image', (req, res) => {
+        try {
+            const filePath = resolveSafe(req.query.path || '');
+            const ext = path.extname(filePath).toLowerCase();
+            const mimeMap = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp', '.svg': 'image/svg+xml', '.bmp': 'image/bmp', '.ico': 'image/x-icon' };
+            const mime = mimeMap[ext] || 'application/octet-stream';
+            if (!mimeMap[ext]) return res.status(400).json({ error: '지원하지 않는 이미지 형식' });
+            const stat = fs.statSync(filePath);
+            if (stat.size > 20 * 1024 * 1024) return res.status(400).json({ error: '이미지가 너무 큽니다 (>20MB)' });
+            res.setHeader('Content-Type', mime);
+            res.setHeader('Cache-Control', 'max-age=300');
+            fs.createReadStream(filePath).pipe(res);
+        } catch (err) {
+            res.status(400).json({ error: err.message });
+        }
+    });
+
+    // ===== BATCH DELETE (일괄 삭제) =====
+    router.post('/batch-delete', express.json(), (req, res) => {
+        try {
+            const paths = req.body.paths || [];
+            const results = [];
+            const errors = [];
+            for (const p of paths) {
+                try {
+                    const targetPath = resolveSafe(p);
+                    if (fs.statSync(targetPath).isDirectory()) {
+                        fs.rmSync(targetPath, { recursive: true, force: true });
+                    } else {
+                        fs.unlinkSync(targetPath);
+                    }
+                    results.push(p);
+                } catch (err) {
+                    errors.push({ path: p, error: err.message });
+                }
+            }
+            res.json({ success: true, deleted: results, errors });
+        } catch (err) {
+            res.status(400).json({ error: err.message });
+        }
+    });
+
     // ===== Find SillyTavern root =====
     function findSTRoot() {
         const home = getSafeRoot();
