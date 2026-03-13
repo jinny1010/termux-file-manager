@@ -8,6 +8,35 @@ const multer = require('multer');
 
 const MODULE_NAME = 'termux-file-manager';
 
+// ===== In-memory file edit history (세션 동안만 유지) =====
+// Map<filePath, Array<{ content: string, timestamp: number, size: number }>>
+const fileHistory = new Map();
+const MAX_HISTORY_PER_FILE = 30; // 파일당 최대 히스토리 수
+
+function formatTimeAgo(ts) {
+    const diff = Math.floor((Date.now() - ts) / 1000);
+    if (diff < 60) return `${diff}초 전`;
+    if (diff < 3600) return `${Math.floor(diff / 60)}분 전`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)}시간 전`;
+    return `${Math.floor(diff / 86400)}일 전`;
+}
+
+function pushHistory(filePath, content) {
+    if (!fileHistory.has(filePath)) {
+        fileHistory.set(filePath, []);
+    }
+    const history = fileHistory.get(filePath);
+    history.push({
+        content,
+        timestamp: Date.now(),
+        size: Buffer.byteLength(content, 'utf-8'),
+    });
+    // 오래된 항목 제거
+    if (history.length > MAX_HISTORY_PER_FILE) {
+        history.splice(0, history.length - MAX_HISTORY_PER_FILE);
+    }
+}
+
 // Safety: restrict navigation to allowed directories
 function getSafeRoot() {
     return process.env.HOME || '/data/data/com.termux/files/home';
@@ -343,11 +372,74 @@ function init(app) {
             if (fs.existsSync(filePath) && fs.statSync(filePath).isDirectory()) {
                 return res.status(400).json({ error: 'Cannot write to a directory' });
             }
+            // 기존 파일이 있으면 히스토리에 저장
+            if (fs.existsSync(filePath)) {
+                try {
+                    const prevContent = fs.readFileSync(filePath, 'utf-8');
+                    pushHistory(filePath, prevContent);
+                } catch (e) { /* 읽기 실패 시 무시 */ }
+            }
             // 부모 디렉토리 확인
             fs.mkdirSync(path.dirname(filePath), { recursive: true });
             fs.writeFileSync(filePath, req.body.content, 'utf-8');
             const stat = fs.statSync(filePath);
             res.json({ success: true, size: stat.size });
+        } catch (err) {
+            res.status(400).json({ error: err.message });
+        }
+    });
+
+    // ===== FILE EDIT HISTORY (세션 내 되돌리기) =====
+    router.post('/history', express.json(), (req, res) => {
+        try {
+            const filePath = resolveSafe(req.body.path);
+            const history = fileHistory.get(filePath) || [];
+            // 내용 제외한 메타데이터만 반환
+            const items = history.map((h, idx) => ({
+                index: idx,
+                timestamp: h.timestamp,
+                size: h.size,
+                timeAgo: formatTimeAgo(h.timestamp),
+            }));
+            res.json({ path: req.body.path, count: items.length, items: items.reverse() });
+        } catch (err) {
+            res.status(400).json({ error: err.message });
+        }
+    });
+
+    router.post('/restore', express.json(), (req, res) => {
+        try {
+            const filePath = resolveSafe(req.body.path);
+            const idx = req.body.index;
+            const history = fileHistory.get(filePath);
+            if (!history || idx < 0 || idx >= history.length) {
+                return res.status(400).json({ error: '해당 히스토리가 없습니다' });
+            }
+            // 현재 내용을 히스토리에 먼저 저장 (복원도 되돌릴 수 있게)
+            if (fs.existsSync(filePath)) {
+                try {
+                    const current = fs.readFileSync(filePath, 'utf-8');
+                    pushHistory(filePath, current);
+                } catch (e) { /* ignore */ }
+            }
+            fs.writeFileSync(filePath, history[idx].content, 'utf-8');
+            const stat = fs.statSync(filePath);
+            res.json({ success: true, size: stat.size, content: history[idx].content });
+        } catch (err) {
+            res.status(400).json({ error: err.message });
+        }
+    });
+
+    // 히스토리 특정 항목 내용 조회 (diff 미리보기용)
+    router.post('/history-content', express.json(), (req, res) => {
+        try {
+            const filePath = resolveSafe(req.body.path);
+            const idx = req.body.index;
+            const history = fileHistory.get(filePath);
+            if (!history || idx < 0 || idx >= history.length) {
+                return res.status(400).json({ error: '해당 히스토리가 없습니다' });
+            }
+            res.json({ content: history[idx].content, size: history[idx].size, timestamp: history[idx].timestamp });
         } catch (err) {
             res.status(400).json({ error: err.message });
         }

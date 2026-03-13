@@ -72,7 +72,13 @@ html, body { height: 100%; font-family: 'Noto Sans KR', sans-serif; background: 
 .upload-zone .big-icon { font-size: 36px; margin-bottom: 8px; }
 .editor-textarea { width: 100%; min-height: 400px; font-family: 'JetBrains Mono', monospace; font-size: 13px; line-height: 1.6; padding: 12px; border: 1px solid var(--border); border-radius: 8px; background: #0d1117; color: #e6edf3; resize: vertical; tab-size: 4; outline: none; }
 .editor-textarea:focus { border-color: var(--accent); }
-.editor-info { font-size: 11px; color: var(--text-dim); margin-bottom: 8px; }
+.editor-info { font-size: 11px; color: var(--text-dim); margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
+.history-list { max-height: 300px; overflow-y: auto; margin: 8px 0; }
+.history-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px; margin-bottom: 4px; font-size: 12px; cursor: pointer; transition: 0.2s; }
+.history-item:hover { border-color: var(--accent); background: var(--accent-glow); }
+.history-item .hi-time { color: var(--text-dim); }
+.history-item .hi-size { color: var(--text-dim); font-size: 11px; }
+.history-badge { background: var(--accent); color: #fff; border-radius: 10px; padding: 1px 7px; font-size: 10px; margin-left: 6px; }
 .image-preview-container { display: flex; justify-content: center; align-items: center; background: #000; border-radius: 8px; padding: 16px; margin-bottom: 12px; max-height: 60vh; overflow: hidden; }
 .image-preview-container img { max-width: 100%; max-height: 55vh; object-fit: contain; border-radius: 4px; }
 .toast-container { position: fixed; bottom: 16px; right: 16px; z-index: 2000; display: flex; flex-direction: column; gap: 6px; }
@@ -329,8 +335,48 @@ async function previewSelected(){ const item=getFirstSelected(); if(!item)return
 
 function previewImage(){ const item=getFirstSelected(); if(!item)return; const url=API_BASE+'/preview-image?path='+encodeURIComponent(getItemPath(item)); showModal(`<h3>🖼 ${escHtml(item.name)}</h3><div class="image-preview-container"><img src="${url}" onerror="this.parentElement.innerHTML='<span style=color:var(--red)>로드 실패</span>'"></div><div class="modal-actions"><button class="btn" onclick="closeModal();downloadSelected()">📥 다운로드</button><button class="btn" onclick="closeModal()">닫기</button></div>`); }
 
-async function editSelected(){ const item=getFirstSelected(); if(!item||item.isDirectory)return toast('편집 불가','error'); const fp=getItemPath(item); try{ const res=await api('/read',{path:fp}); const data=await res.json(); showModal(`<h3>✏️ ${escHtml(item.name)}</h3><div class="editor-info">${escHtml(fp)} · ${formatSize(data.size)}</div><textarea class="editor-textarea" id="editorContent">${escHtml(data.content)}</textarea><div class="modal-actions"><button class="btn" onclick="closeModal()">취소</button><button class="btn primary" onclick="saveEditor('${escHtml(fp).replace(/'/g,"\\'")}')">💾 저장</button></div>`); const ta=document.getElementById('editorContent'); ta.addEventListener('keydown',e=>{if(e.key==='Tab'){e.preventDefault();const s=ta.selectionStart;ta.value=ta.value.substring(0,s)+'    '+ta.value.substring(ta.selectionEnd);ta.selectionStart=ta.selectionEnd=s+4;}if(e.key==='s'&&(e.ctrlKey||e.metaKey)){e.preventDefault();saveEditor(fp);}}); setTimeout(()=>ta.focus(),100); }catch(e){toast('열기 실패: '+e.message,'error');} }
+async function editSelected(){ const item=getFirstSelected(); if(!item||item.isDirectory)return toast('편집 불가','error'); const fp=getItemPath(item); try{ const res=await api('/read',{path:fp}); const data=await res.json(); showModal(`<h3>✏️ ${escHtml(item.name)}</h3><div class="editor-info"><span>${escHtml(fp)} · ${formatSize(data.size)}</span><button class="btn" style="font-size:11px;padding:2px 10px" onclick="showHistory('${escHtml(fp).replace(/'/g,"\\'")}')">🕒 히스토리</button></div><textarea class="editor-textarea" id="editorContent">${escHtml(data.content)}</textarea><div class="modal-actions"><button class="btn" onclick="closeModal()">취소</button><button class="btn primary" onclick="saveEditor('${escHtml(fp).replace(/'/g,"\\'")}')">💾 저장</button></div>`); const ta=document.getElementById('editorContent'); ta.addEventListener('keydown',e=>{if(e.key==='Tab'){e.preventDefault();const s=ta.selectionStart;ta.value=ta.value.substring(0,s)+'    '+ta.value.substring(ta.selectionEnd);ta.selectionStart=ta.selectionEnd=s+4;}if(e.key==='s'&&(e.ctrlKey||e.metaKey)){e.preventDefault();saveEditor(fp);}if(e.key==='z'&&(e.ctrlKey||e.metaKey)&&e.shiftKey){e.preventDefault();showHistory(fp);}}); setTimeout(()=>ta.focus(),100); }catch(e){toast('열기 실패: '+e.message,'error');} }
 async function saveEditor(fp){ const c=document.getElementById('editorContent').value; try{const res=await api('/write',{path:fp,content:c});const d=await res.json();toast('저장 완료 ('+formatSize(d.size)+')');closeModal();if(!isSearchMode)loadDir(currentPath);}catch(e){toast('저장 실패: '+e.message,'error');} }
+async function showHistory(fp){
+    try{
+        const res=await api('/history',{path:fp}); const d=await res.json();
+        if(!d.count) return toast('히스토리 없음 (저장한 적 없음)');
+        let html=`<h3>🕒 편집 히스토리</h3><p style="font-size:12px;color:var(--text-dim);margin-bottom:8px">${escHtml(fp)} — ${d.count}개 버전</p><div class="history-list">`;
+        d.items.forEach(h=>{
+            const t=new Date(h.timestamp).toLocaleString('ko-KR');
+            html+=`<div class="history-item" onclick="previewHistory('${escHtml(fp).replace(/'/g,"\\'")}',${h.index})"><div><span style="color:var(--accent)">#${h.index+1}</span> <span class="hi-time">${t}</span> <span class="hi-size">(${formatSize(h.size)})</span></div><span style="color:var(--text-dim)">${h.timeAgo}</span></div>`;
+        });
+        html+=`</div><div class="modal-actions"><button class="btn" onclick="closeModal();editFileByPath('${escHtml(fp).replace(/'/g,"\\'")}')">← 편집기로</button><button class="btn" onclick="closeModal()">닫기</button></div>`;
+        showModal(html);
+    }catch(e){toast('히스토리 조회 실패','error');}
+}
+async function previewHistory(fp,idx){
+    try{
+        const res=await api('/history-content',{path:fp,index:idx}); const d=await res.json();
+        const t=new Date(d.timestamp).toLocaleString('ko-KR');
+        showModal(`<h3>🕒 버전 #${idx+1} <span style="font-size:12px;color:var(--text-dim)">${t} · ${formatSize(d.size)}</span></h3><textarea class="editor-textarea" readonly style="min-height:300px;opacity:0.85">${escHtml(d.content)}</textarea><div class="modal-actions"><button class="btn" onclick="showHistory('${escHtml(fp).replace(/'/g,"\\'")}')">← 목록</button><button class="btn" onclick="closeModal();loadHistoryIntoEditor('${escHtml(fp).replace(/'/g,"\\'")}',${idx})">📝 편집기에 넣기</button><button class="btn primary" onclick="restoreHistory('${escHtml(fp).replace(/'/g,"\\'")}',${idx})">⏪ 이 버전으로 복원</button></div>`);
+    }catch(e){toast('내용 조회 실패','error');}
+}
+async function restoreHistory(fp,idx){
+    if(!confirm('이 버전으로 복원하시겠습니까? (현재 내용은 히스토리에 저장됩니다)'))return;
+    try{
+        const res=await api('/restore',{path:fp,index:idx}); const d=await res.json();
+        toast('복원 완료 ('+formatSize(d.size)+')');
+        closeModal(); if(!isSearchMode)loadDir(currentPath);
+    }catch(e){toast('복원 실패: '+e.message,'error');}
+}
+async function loadHistoryIntoEditor(fp,idx){
+    try{
+        const res=await api('/history-content',{path:fp,index:idx}); const d=await res.json();
+        closeModal();
+        // 편집기를 다시 열고 히스토리 내용을 넣음
+        await editFileByPath(fp);
+        setTimeout(()=>{const ta=document.getElementById('editorContent');if(ta)ta.value=d.content;},150);
+    }catch(e){toast('실패','error');}
+}
+async function editFileByPath(fp){
+    try{ const res=await api('/read',{path:fp}); const data=await res.json(); const name=fp.split('/').pop(); showModal(`<h3>✏️ ${escHtml(name)}</h3><div class="editor-info"><span>${escHtml(fp)} · ${formatSize(data.size)}</span><button class="btn" style="font-size:11px;padding:2px 10px" onclick="showHistory('${escHtml(fp).replace(/'/g,"\\'")}')">🕒 히스토리</button></div><textarea class="editor-textarea" id="editorContent">${escHtml(data.content)}</textarea><div class="modal-actions"><button class="btn" onclick="closeModal()">취소</button><button class="btn primary" onclick="saveEditor('${escHtml(fp).replace(/'/g,"\\'")}')">💾 저장</button></div>`); const ta=document.getElementById('editorContent'); ta.addEventListener('keydown',e=>{if(e.key==='Tab'){e.preventDefault();const s=ta.selectionStart;ta.value=ta.value.substring(0,s)+'    '+ta.value.substring(ta.selectionEnd);ta.selectionStart=ta.selectionEnd=s+4;}if(e.key==='s'&&(e.ctrlKey||e.metaKey)){e.preventDefault();saveEditor(fp);}if(e.key==='z'&&(e.ctrlKey||e.metaKey)&&e.shiftKey){e.preventDefault();showHistory(fp);}}); setTimeout(()=>ta.focus(),100); }catch(e){toast('열기 실패','error');}
+}
 
 async function showFileInfo(){ const item=getFirstSelected(); if(!item)return; try{ const res=await api('/info',{path:getItemPath(item)}); const info=await res.json(); showModal(`<h3>ℹ️ 상세 정보</h3><div style="font-family:'JetBrains Mono',monospace;font-size:12px;line-height:2"><div><b>이름:</b> ${escHtml(info.name)}</div><div><b>경로:</b> ${escHtml(info.path)}</div><div><b>타입:</b> ${info.isDirectory?'📁 디렉토리':'📄 파일'}${info.isSymlink?' → '+escHtml(info.linkTarget):''}</div><div><b>크기:</b> ${formatSize(info.size)} (${(info.size||0).toLocaleString()} bytes)</div><div><b>권한:</b> ${info.mode} (uid:${info.uid} gid:${info.gid})</div><div><b>수정:</b> ${new Date(info.mtime).toLocaleString('ko-KR')}</div><div><b>생성:</b> ${new Date(info.ctime).toLocaleString('ko-KR')}</div>${info.childCount!=null?`<div><b>하위:</b> ${info.childCount}개</div>`:''}</div><div class="modal-actions"><button class="btn" onclick="closeModal()">닫기</button></div>`); }catch(e){toast('정보 조회 실패','error');} }
 
