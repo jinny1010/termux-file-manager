@@ -407,7 +407,7 @@ function init(app) {
         }
     });
 
-    router.post('/restore', express.json(), (req, res) => {
+    router.post('/history-restore', express.json(), (req, res) => {
         try {
             const filePath = resolveSafe(req.body.path);
             const idx = req.body.index;

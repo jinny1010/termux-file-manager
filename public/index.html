@@ -360,7 +360,7 @@ async function previewHistory(fp,idx){
 async function restoreHistory(fp,idx){
     if(!confirm('이 버전으로 복원하시겠습니까? (현재 내용은 히스토리에 저장됩니다)'))return;
     try{
-        const res=await api('/restore',{path:fp,index:idx}); const d=await res.json();
+        const res=await api('/history-restore',{path:fp,index:idx}); const d=await res.json();
         toast('복원 완료 ('+formatSize(d.size)+')');
         closeModal(); if(!isSearchMode)loadDir(currentPath);
     }catch(e){toast('복원 실패: '+e.message,'error');}
